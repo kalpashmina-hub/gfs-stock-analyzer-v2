@@ -77,7 +77,24 @@ def indicators(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
-    return df.resample(rule).agg({"Open":"first", "High":"max", "Low":"min", "Close":"last", "Volume":"sum"}).dropna(subset=["Open", "High", "Low", "Close"])
+    """Resample daily OHLCV data. Labels represent period-end dates."""
+    return df.resample(rule).agg(
+        {"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"}
+    ).dropna(subset=["Open", "High", "Low", "Close"])
+
+
+def completed_resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
+    """Return only periods whose calendar end date has passed in India.
+
+    This prevents the developing current week/month from influencing the
+    confirmed Father/Grandfather scores. The latest period remains visible
+    in the daily data and is deliberately not promoted to a confirmed signal.
+    """
+    bars = resample_ohlcv(df, rule)
+    if bars.empty:
+        return bars
+    today = pd.Timestamp.now(tz="Asia/Kolkata").tz_localize(None).normalize()
+    return bars.loc[bars.index.normalize() <= today]
 
 
 def evaluate(df: pd.DataFrame, label: str, weight: int, is_daily=False):
@@ -135,7 +152,7 @@ def make_chart(df, title):
     d = df.tail(220)
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=.05, row_heights=[.75,.25])
     fig.add_trace(go.Candlestick(x=d.index, open=d.Open, high=d.High, low=d.Low, close=d.Close, name="Price"), row=1,col=1)
-    for col, name in [("EMA20","EMA 20"),("EMA50","EMA 50"),("SMA200","SMA 200")]:
+    for col, name in [("EMA10","EMA 10"),("EMA20","EMA 20"),("EMA50","EMA 50"),("SMA200","SMA 200")]:
         if col in d and d[col].notna().any(): fig.add_trace(go.Scatter(x=d.index,y=d[col],name=name,mode="lines"),row=1,col=1)
     fig.add_trace(go.Bar(x=d.index,y=d.Volume,name="Volume"),row=2,col=1)
     fig.update_layout(title=title, height=650, xaxis_rangeslider_visible=False, legend_orientation="h", margin=dict(l=15,r=15,t=55,b=15))
@@ -174,8 +191,8 @@ if run:
             st.error(f"Only {len(raw)} daily rows are available. Please provide at least 220 trading sessions for the daily SMA200 and meaningful multi-timeframe analysis.")
             st.stop()
         daily = indicators(raw)
-        weekly = indicators(resample_ohlcv(raw, "W-FRI"))
-        monthly = indicators(resample_ohlcv(raw, "ME"))
+        weekly = indicators(completed_resample_ohlcv(raw, "W-FRI"))
+        monthly = indicators(completed_resample_ohlcv(raw, "ME"))
         results = [evaluate(monthly, "Grandfather / Monthly", 35), evaluate(weekly, "Father / Weekly", 35), evaluate(daily, "Son / Daily", 30, True)]
         if any(x is None for x in results):
             st.error("Insufficient history after resampling. Upload a longer price history.")
@@ -220,9 +237,22 @@ if run:
         st.subheader("Daily chart")
         st.plotly_chart(make_chart(daily, f"{symbol} — Daily candles and moving averages"), use_container_width=True)
         st.subheader("Momentum dashboard")
-        mom = daily.tail(250)[["RSI", "RSI_MA9", "MACD_HIST"]]
-        st.line_chart(mom[["RSI", "RSI_MA9"]])
-        st.line_chart(mom[["MACD_HIST"]])
+        mom = daily.tail(250)
+        rsi_fig = go.Figure()
+        rsi_fig.add_trace(go.Scatter(x=mom.index, y=mom["RSI"], name="RSI 14", mode="lines"))
+        rsi_fig.add_trace(go.Scatter(x=mom.index, y=mom["RSI_MA9"], name="RSI MA 9", mode="lines"))
+        for level in (30, 50, 70):
+            rsi_fig.add_hline(y=level, line_dash="dot", annotation_text=str(level))
+        rsi_fig.update_yaxes(range=[0, 100], title="RSI")
+        rsi_fig.update_layout(title="RSI 14 with 9-period average", height=320, margin=dict(l=15, r=15, t=45, b=15), legend_orientation="h")
+        st.plotly_chart(rsi_fig, use_container_width=True)
+
+        macd_fig = go.Figure()
+        macd_fig.add_trace(go.Bar(x=mom.index, y=mom["MACD_HIST"], name="Histogram"))
+        macd_fig.add_trace(go.Scatter(x=mom.index, y=mom["MACD"], name="MACD", mode="lines"))
+        macd_fig.add_trace(go.Scatter(x=mom.index, y=mom["MACD_SIGNAL"], name="Signal", mode="lines"))
+        macd_fig.update_layout(title="MACD (12, 26, 9)", height=320, margin=dict(l=15, r=15, t=45, b=15), legend_orientation="h")
+        st.plotly_chart(macd_fig, use_container_width=True)
         st.caption("RSI 40–60 is an assessment zone, not a rigid filter. RSI above 60 can reflect strong momentum; below 30 is not an automatic buy signal.")
 
         st.subheader("Support, resistance and Fibonacci")
