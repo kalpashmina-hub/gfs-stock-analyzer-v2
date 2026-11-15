@@ -126,26 +126,84 @@ def fmt(v, digits=2):
     return "—" if pd.isna(v) else f"{v:,.{digits}f}"
 
 
-def pivots(df: pd.DataFrame, window=3):
-    d = df.tail(180).copy()
-    lows, highs = [], []
-    for i in range(window, len(d)-window):
-        if d.Low.iloc[i] == d.Low.iloc[i-window:i+window+1].min(): lows.append(float(d.Low.iloc[i]))
-        if d.High.iloc[i] == d.High.iloc[i-window:i+window+1].max(): highs.append(float(d.High.iloc[i]))
+def confirmed_swings(df: pd.DataFrame, window=5, lookback=250):
+    """Find confirmed fractal swing points; each point is confirmed only after
+    'window' bars have formed on its right side.
+    """
+    d = df.tail(lookback).copy()
+    points = []
+    if len(d) < window * 2 + 5:
+        return points
+    for i in range(window, len(d) - window):
+        low_window = d.Low.iloc[i-window:i+window+1]
+        high_window = d.High.iloc[i-window:i+window+1]
+        if d.Low.iloc[i] == low_window.min():
+            points.append({"date": d.index[i], "price": float(d.Low.iloc[i]), "kind": "Low"})
+        if d.High.iloc[i] == high_window.max():
+            points.append({"date": d.index[i], "price": float(d.High.iloc[i]), "kind": "High"})
+    points.sort(key=lambda x: x["date"])
+
+    # Consecutive highs or lows are consolidated into the more extreme point.
+    alternating = []
+    for point in points:
+        if alternating and alternating[-1]["kind"] == point["kind"]:
+            previous = alternating[-1]
+            more_extreme = (point["price"] < previous["price"] if point["kind"] == "Low"
+                            else point["price"] > previous["price"])
+            if more_extreme:
+                alternating[-1] = point
+        else:
+            alternating.append(point)
+    return alternating
+
+
+def pivots(df: pd.DataFrame, window=5):
+    """Return nearby confirmed daily swing levels with dates and prices."""
+    d = df.tail(250)
+    swings = confirmed_swings(d, window=window, lookback=250)
     price = float(d.Close.iloc[-1])
-    supports = sorted([x for x in lows if x < price], reverse=True)[:3]
-    resistances = sorted([x for x in highs if x > price])[:3]
+    supports = sorted(
+        [p for p in swings if p["kind"] == "Low" and p["price"] < price],
+        key=lambda p: p["price"], reverse=True
+    )[:3]
+    resistances = sorted(
+        [p for p in swings if p["kind"] == "High" and p["price"] > price],
+        key=lambda p: p["price"]
+    )[:3]
     return supports, resistances
 
 
 def fib_levels(df: pd.DataFrame):
-    d = df.tail(120)
-    lo_idx, hi_idx = d.Low.idxmin(), d.High.idxmax()
-    lo, hi = float(d.loc[lo_idx, "Low"]), float(d.loc[hi_idx, "High"])
-    # Use the most recent swing direction based on which extreme occurred later.
-    if lo_idx < hi_idx:
-        return "Up-swing retracement", {"23.6%":hi-(hi-lo)*.236, "38.2%":hi-(hi-lo)*.382, "50.0%":hi-(hi-lo)*.5, "61.8%":hi-(hi-lo)*.618, "78.6%":hi-(hi-lo)*.786}
-    return "Down-swing retracement", {"23.6%":lo+(hi-lo)*.236, "38.2%":lo+(hi-lo)*.382, "50.0%":lo+(hi-lo)*.5, "61.8%":lo+(hi-lo)*.618, "78.6%":lo+(hi-lo)*.786}
+    """Calculate retracements from the latest confirmed alternating swing pair."""
+    swings = confirmed_swings(df, window=5, lookback=250)
+    if len(swings) < 2:
+        return None, "Insufficient confirmed swing history"
+
+    pair = None
+    # Search backwards for the latest meaningful opposite-direction swing pair.
+    for i in range(len(swings) - 1, 0, -1):
+        first, second = swings[i-1], swings[i]
+        if first["kind"] == second["kind"]:
+            continue
+        move = abs(second["price"] - first["price"]) / max(first["price"], second["price"])
+        if move >= 0.03:
+            pair = (first, second)
+            break
+    if pair is None:
+        return None, "No sufficiently large confirmed swing found"
+
+    first, second = pair
+    low = min(first["price"], second["price"])
+    high = max(first["price"], second["price"])
+    if first["kind"] == "Low" and second["kind"] == "High":
+        label = f"Up-swing retracement ({pd.Timestamp(first['date']).strftime('%d %b')} low to {pd.Timestamp(second['date']).strftime('%d %b')} high)"
+        levels = {k: high - (high-low)*v for k, v in
+                  [("23.6%",.236),("38.2%",.382),("50.0%",.5),("61.8%",.618),("78.6%",.786)]}
+    else:
+        label = f"Down-swing retracement ({pd.Timestamp(first['date']).strftime('%d %b')} high to {pd.Timestamp(second['date']).strftime('%d %b')} low)"
+        levels = {k: low + (high-low)*v for k, v in
+                  [("23.6%",.236),("38.2%",.382),("50.0%",.5),("61.8%",.618),("78.6%",.786)]}
+    return levels, label
 
 
 def make_chart(df, title):
@@ -257,33 +315,38 @@ if run:
 
         st.subheader("Support, resistance and Fibonacci")
         supports, resistances = pivots(daily)
-        fib_name, fib = fib_levels(daily)
+        fib, fib_name = fib_levels(daily)
         a,b,c = st.columns(3)
         with a:
-            st.markdown("**Nearby support pivots**")
+            st.markdown("**Nearby confirmed swing supports**")
             support_table = pd.DataFrame(
-                [{"Level": f"Support {i+1}", "Price": fmt(value)} for i, value in enumerate(supports)]
+                [{"Level": f"Support {i+1}", "Swing date": pd.Timestamp(p["date"]).strftime("%d %b %Y"),
+                  "Price": fmt(p["price"])} for i, p in enumerate(supports)]
             )
             if support_table.empty:
-                st.info("No confirmed pivot support found")
+                st.info("No confirmed swing support found below the latest close.")
             else:
                 st.dataframe(support_table, use_container_width=True, hide_index=True)
         with b:
-            st.markdown("**Nearby resistance pivots**")
+            st.markdown("**Nearby confirmed swing resistances**")
             resistance_table = pd.DataFrame(
-                [{"Level": f"Resistance {i+1}", "Price": fmt(value)} for i, value in enumerate(resistances)]
+                [{"Level": f"Resistance {i+1}", "Swing date": pd.Timestamp(p["date"]).strftime("%d %b %Y"),
+                  "Price": fmt(p["price"])} for i, p in enumerate(resistances)]
             )
             if resistance_table.empty:
-                st.info("No confirmed pivot resistance found")
+                st.info("No confirmed swing resistance found above the latest close.")
             else:
                 st.dataframe(resistance_table, use_container_width=True, hide_index=True)
         with c:
-            st.markdown(f"**{fib_name} — 120-session range**")
-            fib_table = pd.DataFrame(
-                [{"Retracement": level, "Price": fmt(value)} for level, value in fib.items()]
-            )
-            st.dataframe(fib_table, use_container_width=True, hide_index=True)
-        st.caption("Pivot levels are mechanical local highs/lows and Fibonacci uses the 120-session extreme range. Validate swing anchors and levels visually; they are not guaranteed turning points.")
+            st.markdown(f"**{fib_name}**")
+            if fib:
+                fib_table = pd.DataFrame(
+                    [{"Retracement": level, "Price": fmt(value)} for level, value in fib.items()]
+                )
+                st.dataframe(fib_table, use_container_width=True, hide_index=True)
+            else:
+                st.info(fib_name)
+        st.caption("Swing points use a five-session fractal confirmation on daily data; the latest five sessions cannot confirm a new pivot. Fibonacci uses the latest confirmed alternating swing pair with at least a 3% price move. Levels are estimates, not guaranteed turning points.")
 
         st.subheader("Fundamental snapshot")
         if info:
