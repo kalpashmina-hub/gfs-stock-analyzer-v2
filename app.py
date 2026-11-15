@@ -293,6 +293,16 @@ if run:
         else:
             verdict = "WAIT / WATCHLIST — mixed timeframe signals"
             st.warning(verdict)
+
+        # Momentum extremes are entry-timing cautions, not trend-score penalties.
+        overbought = []
+        for item in results:
+            rsi_value = item.get("RSI")
+            if pd.notna(rsi_value) and rsi_value >= 70:
+                overbought.append(f"{item['Timeframe'].split('/')[-1].strip()} RSI is {rsi_value:.1f}")
+        if overbought:
+            st.info("Momentum caution — " + "; ".join(overbought) +
+                    ". Strong momentum can persist, so this does not reduce the GFS trend score; avoid chasing and assess pullbacks, price action and risk/reward before entry.")
         st.caption("The 0–100 score is a transparent checklist score, not a probability of profit. It is not a personalised recommendation. Confirm fundamentals, liquidity, news, position sizing and reward/risk before acting.")
 
         st.subheader("Timeframe indicator dashboard")
