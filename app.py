@@ -377,18 +377,23 @@ if run:
             for label,key,kind in fields:
                 value=info.get(key)
                 if value is not None:
-                    if kind=="percent": value=f"{value*100:.2f}%"
+                    note = ""
+                    if kind=="percent":
+                        numeric_value = pd.to_numeric(value, errors="coerce")
+                        value = f"{numeric_value*100:.2f}%" if pd.notna(numeric_value) else "Unavailable / invalid"
+                        if key in ("revenueGrowth", "earningsGrowth") and pd.notna(numeric_value) and abs(numeric_value) >= 1:
+                            note = "Unusually large growth figure — verify reporting period, base effect and company filing"
                     elif kind=="ratio": value=f"{value:,.2f}x"
                     elif kind=="provider_ratio": value=f"{value:,.2f} (provider unit; verify definition)"
                     elif kind=="rupees": value=f"₹{value:,.2f}"
-                    fund_rows.append({"Metric":label,"Provider value":value})
+                    fund_rows.append({"Metric":label,"Provider value":value,"Data-quality note":note})
             if fund_rows:
                 st.dataframe(pd.DataFrame(fund_rows), use_container_width=True, hide_index=True)
             else:
                 st.info("No fundamental fields returned by the provider.")
         else:
             st.info("Fundamentals are not included for CSV uploads. Use company annual reports, quarterly results and exchange filings for verification.")
-        st.caption("Fundamental data is provider-reported and may be missing or stale. Debt/equity is shown in the provider's raw unit because Yahoo field conventions can vary; verify it against company filings. This snapshot is not a substitute for audited statements, quarterly results, shareholding and exchange announcements.")
+        st.caption("Fundamental data is provider-reported and may be missing or stale. Growth figures of 100% or more in either direction are flagged for manual verification because reporting periods, low-base effects and exceptional items can distort comparisons. Debt/equity is shown in the provider's raw unit because Yahoo field conventions can vary; verify it against company filings. This snapshot is not a substitute for audited statements, quarterly results, shareholding and exchange announcements.")
 
         st.subheader("Export")
         csv = daily.to_csv(index_label="Date").encode("utf-8")
