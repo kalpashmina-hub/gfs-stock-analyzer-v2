@@ -126,6 +126,18 @@ def fmt(v, digits=2):
     return "—" if pd.isna(v) else f"{v:,.{digits}f}"
 
 
+def format_market_cap_inr(value):
+    """Format Yahoo Finance market capitalisation in Indian numbering units."""
+    if value is None or pd.isna(value):
+        return "—"
+    amount = float(value)
+    crore = amount / 10_000_000
+    lakh_crore = crore / 100_000
+    if lakh_crore >= 1:
+        return f"₹{lakh_crore:,.2f} lakh crore"
+    return f"₹{crore:,.2f} crore"
+
+
 def confirmed_swings(df: pd.DataFrame, window=5, lookback=250):
     """Find confirmed fractal swing points; each point is confirmed only after
     'window' bars have formed on its right side.
@@ -351,18 +363,24 @@ if run:
         st.subheader("Fundamental snapshot")
         if info:
             fields = [
-                ("Market cap", "marketCap", "number"), ("Trailing P/E", "trailingPE", "number"),
-                ("Forward P/E", "forwardPE", "number"), ("Price / book", "priceToBook", "number"),
-                ("Return on equity", "returnOnEquity", "percent"), ("Debt / equity", "debtToEquity", "number"),
+                ("Trailing P/E", "trailingPE", "ratio"), ("Forward P/E", "forwardPE", "ratio"),
+                ("Price / book", "priceToBook", "ratio"),
+                ("Return on equity", "returnOnEquity", "percent"),
+                ("Debt / equity (provider-reported)", "debtToEquity", "provider_ratio"),
                 ("Profit margin", "profitMargins", "percent"), ("Revenue growth", "revenueGrowth", "percent"),
-                ("Earnings growth", "earningsGrowth", "percent"), ("52-week high", "fiftyTwoWeekHigh", "number"),
-                ("52-week low", "fiftyTwoWeekLow", "number")]
+                ("Earnings growth", "earningsGrowth", "percent"), ("52-week high (₹)", "fiftyTwoWeekHigh", "rupees"),
+                ("52-week low (₹)", "fiftyTwoWeekLow", "rupees")]
             fund_rows=[]
+            market_cap = info.get("marketCap")
+            if market_cap is not None:
+                fund_rows.append({"Metric":"Market cap", "Provider value":format_market_cap_inr(market_cap)})
             for label,key,kind in fields:
                 value=info.get(key)
                 if value is not None:
                     if kind=="percent": value=f"{value*100:.2f}%"
-                    elif kind=="number": value=f"{value:,.2f}" if isinstance(value,(int,float)) else str(value)
+                    elif kind=="ratio": value=f"{value:,.2f}x"
+                    elif kind=="provider_ratio": value=f"{value:,.2f} (provider unit; verify definition)"
+                    elif kind=="rupees": value=f"₹{value:,.2f}"
                     fund_rows.append({"Metric":label,"Provider value":value})
             if fund_rows:
                 st.dataframe(pd.DataFrame(fund_rows), use_container_width=True, hide_index=True)
@@ -370,7 +388,7 @@ if run:
                 st.info("No fundamental fields returned by the provider.")
         else:
             st.info("Fundamentals are not included for CSV uploads. Use company annual reports, quarterly results and exchange filings for verification.")
-        st.caption("Fundamental data is provider-reported, may be missing or stale, and is not a substitute for reading audited statements, quarterly results, shareholding and exchange announcements.")
+        st.caption("Fundamental data is provider-reported and may be missing or stale. Debt/equity is shown in the provider's raw unit because Yahoo field conventions can vary; verify it against company filings. This snapshot is not a substitute for audited statements, quarterly results, shareholding and exchange announcements.")
 
         st.subheader("Export")
         csv = daily.to_csv(index_label="Date").encode("utf-8")
