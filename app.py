@@ -261,13 +261,28 @@ if run:
         a,b,c = st.columns(3)
         with a:
             st.markdown("**Nearby support pivots**")
-            st.write([fmt(x) for x in supports] or "No confirmed pivot support found")
+            support_table = pd.DataFrame(
+                [{"Level": f"Support {i+1}", "Price": fmt(value)} for i, value in enumerate(supports)]
+            )
+            if support_table.empty:
+                st.info("No confirmed pivot support found")
+            else:
+                st.dataframe(support_table, use_container_width=True, hide_index=True)
         with b:
             st.markdown("**Nearby resistance pivots**")
-            st.write([fmt(x) for x in resistances] or "No confirmed pivot resistance found")
+            resistance_table = pd.DataFrame(
+                [{"Level": f"Resistance {i+1}", "Price": fmt(value)} for i, value in enumerate(resistances)]
+            )
+            if resistance_table.empty:
+                st.info("No confirmed pivot resistance found")
+            else:
+                st.dataframe(resistance_table, use_container_width=True, hide_index=True)
         with c:
             st.markdown(f"**{fib_name} — 120-session range**")
-            st.write({k:fmt(v) for k,v in fib.items()})
+            fib_table = pd.DataFrame(
+                [{"Retracement": level, "Price": fmt(value)} for level, value in fib.items()]
+            )
+            st.dataframe(fib_table, use_container_width=True, hide_index=True)
         st.caption("Pivot levels are mechanical local highs/lows and Fibonacci uses the 120-session extreme range. Validate swing anchors and levels visually; they are not guaranteed turning points.")
 
         st.subheader("Fundamental snapshot")
