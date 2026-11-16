@@ -275,7 +275,7 @@ def fib_levels(df: pd.DataFrame, current_price=None):
             pair = (first, second, move_pct, span, len(d) - 1 - second_pos)
             break
     if pair is None:
-        return None, "No confirmed swing meets the minimum size and duration checks (≥3% or 2× ATR, across at least 5 sessions)", "Unavailable"
+        return None, "No confirmed swing meets the minimum size and duration checks (move must be at least the greater of 3% or 2× ATR, across at least 5 sessions)", "Unavailable"
 
     first, second, move_pct, span, age_sessions = pair
     low = min(float(first["price"]), float(second["price"]))
