@@ -325,7 +325,7 @@ if run:
         st.caption("Each timeframe score weights Trend 40%, Momentum 35% and Confirmation 25%. Related RSI/MACD checks are grouped so momentum signals do not dominate the underlying price trend. Monthly/weekly/daily composite weights remain 35/35/30. The 0–100 score is a checklist, not a probability of profit or a personalised recommendation; confirm fundamentals, liquidity, news, position sizing and reward/risk before acting.")
 
         st.subheader("Timeframe indicator dashboard")
-        dashboard = pd.DataFrame([{k:v for k,v in x.items() if k not in ("Checks",)} for x in results])
+        dashboard = pd.DataFrame([{k:v for k,v in x.items() if k not in ("Checks", "Check groups")} for x in results])
         st.dataframe(dashboard, use_container_width=True, hide_index=True)
         with st.expander("Detailed GFS checklist", expanded=True):
             rows=[]
@@ -429,7 +429,7 @@ if run:
         st.subheader("Export")
         csv = daily.to_csv(index_label="Date").encode("utf-8")
         st.download_button("Download daily indicators CSV", csv, file_name=f"{symbol}_GFS_V2_daily.csv", mime="text/csv")
-        summary_csv = pd.DataFrame([{k:v for k,v in x.items() if k!="Checks"} for x in results]).to_csv(index=False).encode("utf-8")
+        summary_csv = pd.DataFrame([{k:v for k,v in x.items() if k not in ("Checks", "Check groups")} for x in results]).to_csv(index=False).encode("utf-8")
         st.download_button("Download GFS summary CSV", summary_csv, file_name=f"{symbol}_GFS_V2_summary.csv", mime="text/csv")
     except Exception as exc:
         st.error(f"Analysis could not be completed: {exc}")
