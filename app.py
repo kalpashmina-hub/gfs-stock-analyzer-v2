@@ -297,6 +297,8 @@ def fib_levels(df: pd.DataFrame, current_price=None):
             status = f"Upswing extended: latest close ₹{price:,.2f} is above the swing high ₹{high:,.2f}. These are historical reference levels, not an active pullback setup."
         elif age_sessions > 90:
             status = f"Stale reference: the swing high is {age_sessions} sessions old. Keep these levels for historical context only; wait for a fresh confirmed swing."
+        elif price < levels["78.6%"]:
+            status = f"Deep retracement: latest close has moved beyond the 78.6% level but remains above the swing low ₹{low:,.2f}. Treat the impulse as severely retraced; do not assume the Fibonacci levels are reliable active support."
         else:
             status = f"Valid anchor range: latest close is within ₹{low:,.2f}–₹{high:,.2f}. Treat Fibonacci prices as potential reaction zones, not confirmed support."
     else:
@@ -312,6 +314,8 @@ def fib_levels(df: pd.DataFrame, current_price=None):
             status = f"Downswing extended: latest close ₹{price:,.2f} is below the swing low ₹{low:,.2f}. These are historical reference levels, not an active pullback setup."
         elif age_sessions > 90:
             status = f"Stale reference: the swing low is {age_sessions} sessions old. Keep these levels for historical context only; wait for a fresh confirmed swing."
+        elif price > levels["78.6%"]:
+            status = f"Deep retracement: latest close has moved beyond the 78.6% level but remains below the swing high ₹{high:,.2f}. Treat the impulse as severely retraced; do not assume the Fibonacci levels are reliable active resistance."
         else:
             status = f"Valid anchor range: latest close is within ₹{low:,.2f}–₹{high:,.2f}. Treat Fibonacci prices as potential reaction zones, not confirmed resistance."
     return levels, label, status
