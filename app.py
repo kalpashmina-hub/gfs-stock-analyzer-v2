@@ -188,10 +188,10 @@ def confirmed_swings(df: pd.DataFrame, window=5, lookback=250):
     return alternating
 
 
-def pivots(df: pd.DataFrame, window=5):
-    """Return nearby confirmed daily swing levels with dates and prices."""
-    d = df.tail(250)
-    swings = confirmed_swings(d, window=window, lookback=250)
+def pivots(df: pd.DataFrame, window=5, lookback=250):
+    """Return nearby confirmed swing levels for the supplied timeframe."""
+    d = df.tail(lookback)
+    swings = confirmed_swings(d, window=window, lookback=lookback)
     price = float(d.Close.iloc[-1])
     supports = sorted(
         [p for p in swings if p["kind"] == "Low" and p["price"] < price],
@@ -359,40 +359,48 @@ if run:
         st.plotly_chart(macd_fig, use_container_width=True)
         st.caption("RSI 40–60 is an assessment zone, not a rigid filter. RSI above 60 can reflect strong momentum; below 30 is not an automatic buy signal.")
 
-        st.subheader("Support, resistance and Fibonacci")
-        supports, resistances = pivots(daily)
-        fib, fib_name = fib_levels(daily)
-        a,b,c = st.columns(3)
-        with a:
-            st.markdown("**Nearby confirmed swing supports**")
-            support_table = pd.DataFrame(
-                [{"Level": f"Support {i+1}", "Swing date": pd.Timestamp(p["date"]).strftime("%d %b %Y"),
-                  "Price": fmt(p["price"])} for i, p in enumerate(supports)]
-            )
-            if support_table.empty:
-                st.info("No confirmed swing support found below the latest close.")
-            else:
-                st.dataframe(support_table, use_container_width=True, hide_index=True)
-        with b:
-            st.markdown("**Nearby confirmed swing resistances**")
-            resistance_table = pd.DataFrame(
-                [{"Level": f"Resistance {i+1}", "Swing date": pd.Timestamp(p["date"]).strftime("%d %b %Y"),
-                  "Price": fmt(p["price"])} for i, p in enumerate(resistances)]
-            )
-            if resistance_table.empty:
-                st.info("No confirmed swing resistance found above the latest close.")
-            else:
-                st.dataframe(resistance_table, use_container_width=True, hide_index=True)
-        with c:
-            st.markdown(f"**{fib_name}**")
-            if fib:
-                fib_table = pd.DataFrame(
-                    [{"Retracement": level, "Price": fmt(value)} for level, value in fib.items()]
+        st.subheader("Multi-timeframe support and resistance")
+        level_specs = [
+            ("Grandfather / Monthly — major levels", monthly, 2, 60),
+            ("Father / Weekly — intermediate levels", weekly, 3, 104),
+            ("Son / Daily — immediate levels", daily, 5, 250),
+        ]
+        for level_title, level_df, swing_window, swing_lookback in level_specs:
+            st.markdown(f"**{level_title}**")
+            supports, resistances = pivots(level_df, window=swing_window, lookback=swing_lookback)
+            left, right = st.columns(2)
+            with left:
+                st.caption("Confirmed swing supports")
+                support_table = pd.DataFrame(
+                    [{"Level": f"Support {i+1}", "Swing date": pd.Timestamp(p["date"]).strftime("%d %b %Y"),
+                      "Price (₹)": fmt(p["price"])} for i, p in enumerate(supports)]
                 )
-                st.dataframe(fib_table, use_container_width=True, hide_index=True)
-            else:
-                st.info(fib_name)
-        st.caption("Swing points use a five-session fractal confirmation on daily data; the latest five sessions cannot confirm a new pivot. Fibonacci uses the latest confirmed alternating swing pair with at least a 3% price move. Levels are estimates, not guaranteed turning points.")
+                if support_table.empty:
+                    st.info("No confirmed support below the latest completed close.")
+                else:
+                    st.dataframe(support_table, use_container_width=True, hide_index=True)
+            with right:
+                st.caption("Confirmed swing resistances")
+                resistance_table = pd.DataFrame(
+                    [{"Level": f"Resistance {i+1}", "Swing date": pd.Timestamp(p["date"]).strftime("%d %b %Y"),
+                      "Price (₹)": fmt(p["price"])} for i, p in enumerate(resistances)]
+                )
+                if resistance_table.empty:
+                    st.info("No confirmed resistance above the latest completed close.")
+                else:
+                    st.dataframe(resistance_table, use_container_width=True, hide_index=True)
+
+        st.markdown("**Daily Fibonacci retracement**")
+        fib, fib_name = fib_levels(daily)
+        if fib:
+            fib_table = pd.DataFrame(
+                [{"Retracement": level, "Price (₹)": fmt(value)} for level, value in fib.items()]
+            )
+            st.caption(fib_name)
+            st.dataframe(fib_table, use_container_width=True, hide_index=True)
+        else:
+            st.info(fib_name)
+        st.caption("Monthly swings use two completed bars on each side, weekly swings use three, and daily swings use five. Only confirmed pivots are shown; recent bars may not yet qualify. Fibonacci remains based on the latest confirmed daily swing pair. Levels are estimates, not guaranteed turning points.")
 
         st.subheader("Fundamental snapshot")
         if info:
