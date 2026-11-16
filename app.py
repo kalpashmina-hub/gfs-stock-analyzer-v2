@@ -365,7 +365,64 @@ if run:
         for x in results:
             score_rows.append({"Timeframe":x["Timeframe"], "Checks passed":f'{x["Checks passed"]}/{x["Checks total"]}', "Trend":f'{x["Trend score"]}%', "Momentum":f'{x["Momentum score"]}%', "Confirmation":f'{x["Confirmation score"]}%', "Score":f'{x["Score"]}/100', "Weight":f'{x["Weight"]}%', "Weighted points":round(x["Weighted points"], 1)})
         st.dataframe(pd.DataFrame(score_rows), use_container_width=True, hide_index=True)
-        st.caption("Checks passed is a simple count; timeframe scores weight Trend 40%, Momentum 35% and Confirmation 25%. Overall weights are Monthly / Weekly / Daily 35% / 35% / 30%.")
+        st.caption("Checks passed is a simple count; timeframe scores weight Trend 40%, Momentum 35% and Confirmation 25%. Overall weights are Monthly / Weekly / Daily 35% / 35% / 30%. Identical scores can occur when pass/fail patterns match; the diagnostic panel below shows signal strength without changing the checklist score.")
+
+        st.markdown("**Signal-strength diagnostics (not additional score points)**")
+        diagnostic_rows = []
+        for frame_name, frame_data, result in [
+            ("Grandfather / Monthly", monthly, g),
+            ("Father / Weekly", weekly, f),
+            ("Son / Daily", daily, s),
+        ]:
+            current = frame_data.iloc[-1]
+            previous = frame_data.iloc[-2]
+            rsi_value = current.get("RSI", np.nan)
+            if pd.isna(rsi_value):
+                rsi_zone = "Unavailable"
+            elif rsi_value < 30:
+                rsi_zone = "Oversold (<30)"
+            elif rsi_value < 40:
+                rsi_zone = "Weak (30–40)"
+            elif rsi_value < 50:
+                rsi_zone = "Below 50 (40–50)"
+            elif rsi_value < 55:
+                rsi_zone = "Early positive (50–55)"
+            elif rsi_value < 60:
+                rsi_zone = "Positive (55–60)"
+            elif rsi_value < 70:
+                rsi_zone = "Strong (60–70)"
+            else:
+                rsi_zone = "Extended (≥70)"
+            ema20 = current.get("EMA20", np.nan)
+            ema50 = current.get("EMA50", np.nan)
+            close_value = current.get("Close", np.nan)
+            distance_ema20 = (close_value / ema20 - 1) * 100 if pd.notna(ema20) and ema20 else np.nan
+            distance_ema50 = (close_value / ema50 - 1) * 100 if pd.notna(ema50) and ema50 else np.nan
+            hist_now = current.get("MACD_HIST", np.nan)
+            hist_prev = previous.get("MACD_HIST", np.nan)
+            if pd.isna(hist_now) or pd.isna(hist_prev):
+                macd_read = "Unavailable"
+            elif hist_now > 0 and hist_now > hist_prev:
+                macd_read = "Positive and improving"
+            elif hist_now > 0:
+                macd_read = "Positive but easing"
+            elif hist_now < 0 and hist_now > hist_prev:
+                macd_read = "Negative but improving"
+            elif hist_now < 0:
+                macd_read = "Negative and weakening"
+            else:
+                macd_read = "At zero"
+            diagnostic_rows.append({
+                "Timeframe": frame_name,
+                "RSI (14)": fmt(rsi_value),
+                "RSI zone": rsi_zone,
+                "Close vs EMA20": f"{distance_ema20:+.1f}%" if pd.notna(distance_ema20) else "—",
+                "Close vs EMA50": f"{distance_ema50:+.1f}%" if pd.notna(distance_ema50) else "—",
+                "MACD histogram": fmt(hist_now, 4),
+                "MACD reading": macd_read,
+            })
+        st.dataframe(pd.DataFrame(diagnostic_rows), use_container_width=True, hide_index=True)
+        st.caption("RSI bands and moving-average distances add context to the binary checklist. A large positive distance can mean price is extended rather than offering a good entry. MACD readings compare the latest completed bar with the previous completed bar. These diagnostics do not alter the GFS score.")
 
         st.markdown("**Volume confirmation (separate from GFS score)**")
         volume_rows = []
