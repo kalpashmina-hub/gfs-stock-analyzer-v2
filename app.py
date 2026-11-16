@@ -418,7 +418,7 @@ if run:
                 "RSI zone": rsi_zone,
                 "Close vs EMA20": f"{distance_ema20:+.1f}%" if pd.notna(distance_ema20) else "—",
                 "Close vs EMA50": f"{distance_ema50:+.1f}%" if pd.notna(distance_ema50) else "—",
-                "MACD histogram": fmt(hist_now, 4),
+                "MACD hist (% of close)": f"{(hist_now / close_value) * 100:+.3f}%" if pd.notna(hist_now) and pd.notna(close_value) and close_value else "—",
                 "MACD reading": macd_read,
             })
         st.dataframe(pd.DataFrame(diagnostic_rows), use_container_width=True, hide_index=True)
