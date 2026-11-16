@@ -145,6 +145,23 @@ def evaluate(df: pd.DataFrame, label: str, weight: int, is_daily=False):
 def fmt(v, digits=2):
     return "—" if pd.isna(v) else f"{v:,.{digits}f}"
 
+def volume_context(df: pd.DataFrame):
+    """Describe latest completed-bar volume versus its 20-period average."""
+    if df.empty or "Volume" not in df or "VOL_MA20" not in df:
+        return {"Volume": "Unavailable", "Relative volume": "—", "Price direction": "—"}
+    row = df.iloc[-1]
+    avg = row.get("VOL_MA20", np.nan)
+    vol = row.get("Volume", np.nan)
+    if pd.isna(avg) or pd.isna(vol) or avg <= 0:
+        relative = np.nan
+        label = "Insufficient volume history"
+    else:
+        relative = float(vol / avg)
+        label = "Elevated" if relative >= 1.5 else "Quiet" if relative < 0.8 else "Near average"
+    direction = "Up bar" if row.Close > row.Open else "Down bar" if row.Close < row.Open else "Flat bar"
+    return {"Volume": label, "Relative volume": "—" if pd.isna(relative) else f"{relative:.2f}x",
+            "Price direction": direction}
+
 
 def format_market_cap_inr(value):
     """Format Yahoo Finance market capitalisation in Indian numbering units."""
@@ -349,6 +366,13 @@ if run:
             score_rows.append({"Timeframe":x["Timeframe"], "Checks passed":f'{x["Checks passed"]}/{x["Checks total"]}', "Trend":f'{x["Trend score"]}%', "Momentum":f'{x["Momentum score"]}%', "Confirmation":f'{x["Confirmation score"]}%', "Score":f'{x["Score"]}/100', "Weight":f'{x["Weight"]}%', "Weighted points":round(x["Weighted points"], 1)})
         st.dataframe(pd.DataFrame(score_rows), use_container_width=True, hide_index=True)
         st.caption("Checks passed is a simple count; timeframe scores weight Trend 40%, Momentum 35% and Confirmation 25%. Overall weights are Monthly / Weekly / Daily 35% / 35% / 30%.")
+
+        st.markdown("**Volume confirmation (separate from GFS score)**")
+        volume_rows = []
+        for frame, data in [("Grandfather / Monthly", monthly), ("Father / Weekly", weekly), ("Son / Daily", daily)]:
+            volume_rows.append({"Timeframe": frame, **volume_context(data)})
+        st.dataframe(pd.DataFrame(volume_rows), use_container_width=True, hide_index=True)
+        st.caption("Relative volume compares the latest completed bar with its 20-period average. Elevated volume is context, not automatically bullish: interpret it with the bar direction, price structure and the next session. Volume is displayed separately and does not change the GFS score.")
         with st.expander("Detailed GFS checklist", expanded=True):
             rows=[]
             for item in results:
