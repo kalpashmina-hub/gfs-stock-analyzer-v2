@@ -112,14 +112,33 @@ def evaluate(df: pd.DataFrame, label: str, weight: int, is_daily=False):
     }
     if is_daily:
         checks["Close above SMA200"] = bool(pd.notna(r.SMA200) and r.Close > r.SMA200)
-    passed = sum(checks.values())
-    pct = passed / len(checks) * 100
+    # Group related signals so four momentum checks cannot outweigh the
+    # underlying price-trend structure. The daily SMA200 check belongs to trend.
+    trend_checks = ["Close above EMA20", "EMA20 above EMA50"]
+    if is_daily:
+        trend_checks.append("Close above SMA200")
+    momentum_checks = ["RSI above 50", "MACD histogram positive"]
+    confirmation_checks = ["RSI above its 9-period average", "MACD histogram improving"]
+
+    def group_pct(names):
+        return sum(checks[name] for name in names) / len(names) * 100
+
+    trend_pct = group_pct(trend_checks)
+    momentum_pct = group_pct(momentum_checks)
+    confirmation_pct = group_pct(confirmation_checks)
+    pct = trend_pct * 0.40 + momentum_pct * 0.35 + confirmation_pct * 0.25
     state = "Bullish" if pct >= 75 else "Improving" if pct >= 50 else "Weak"
+    check_groups = {name: "Trend" for name in trend_checks}
+    check_groups.update({name: "Momentum" for name in momentum_checks})
+    check_groups.update({name: "Confirmation" for name in confirmation_checks})
     return {"Timeframe":label, "Date":pd.Timestamp(r.name).strftime("%d %b %Y"), "Close":r.Close,
             "RSI":r.RSI, "RSI MA9":r.RSI_MA9, "EMA20":r.EMA20, "EMA50":r.EMA50,
-            "SMA200":r.get("SMA200", np.nan), "MACD histogram":r.MACD_HIST,
-            "Score":round(pct), "Weight":weight, "Weighted points":pct*weight/100,
-            "State":state, "Checks":checks}
+            "SMA200":r.get("SMA200", np.nan),
+            "Trend score":round(trend_pct), "Momentum score":round(momentum_pct),
+            "Confirmation score":round(confirmation_pct),
+            "MACD histogram":r.MACD_HIST, "Score":round(pct), "Weight":weight,
+            "Weighted points":pct*weight/100, "State":state, "Checks":checks,
+            "Check groups":check_groups}
 
 
 def fmt(v, digits=2):
@@ -303,7 +322,7 @@ if run:
         if overbought:
             st.info("Momentum caution — " + "; ".join(overbought) +
                     ". Strong momentum can persist, so this does not reduce the GFS trend score; avoid chasing and assess pullbacks, price action and risk/reward before entry.")
-        st.caption("The 0–100 score is a transparent checklist score, not a probability of profit. It is not a personalised recommendation. Confirm fundamentals, liquidity, news, position sizing and reward/risk before acting.")
+        st.caption("Each timeframe score weights Trend 40%, Momentum 35% and Confirmation 25%. Related RSI/MACD checks are grouped so momentum signals do not dominate the underlying price trend. Monthly/weekly/daily composite weights remain 35/35/30. The 0–100 score is a checklist, not a probability of profit or a personalised recommendation; confirm fundamentals, liquidity, news, position sizing and reward/risk before acting.")
 
         st.subheader("Timeframe indicator dashboard")
         dashboard = pd.DataFrame([{k:v for k,v in x.items() if k not in ("Checks",)} for x in results])
@@ -311,7 +330,9 @@ if run:
         with st.expander("Detailed GFS checklist", expanded=True):
             rows=[]
             for item in results:
-                for check, passed in item["Checks"].items(): rows.append({"Timeframe":item["Timeframe"], "Condition":check, "Result":"Pass" if passed else "Not met"})
+                for check, passed in item["Checks"].items():
+                    rows.append({"Timeframe":item["Timeframe"], "Category":item["Check groups"][check],
+                                 "Condition":check, "Result":"Pass" if passed else "Not met"})
             st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
         st.subheader("Daily chart")
