@@ -380,7 +380,7 @@ if run:
         st.subheader("GFS score breakdown")
         score_rows = []
         for x in results:
-            score_rows.append({"Timeframe":x["Timeframe"], "Checks passed":f'{x["Checks passed"]}/{x["Checks total"]}', "Trend":f'{x["Trend score"]}%', "Momentum":f'{x["Momentum score"]}%', "Confirmation":f'{x["Confirmation score"]}%', "Score":f'{x["Score"]}/100', "Weight":f'{x["Weight"]}%', "Weighted points":round(x["Weighted points"], 1)})
+            score_rows.append({"Timeframe":x["Timeframe"], "Checks passed":f'{x["Checks passed"]}/{x["Checks total"]}', "Trend":f'{x["Trend score"]}%', "Momentum":f'{x["Momentum score"]}%', "Confirmation":f'{x["Confirmation score"]}%', "Score":f'{x["Score"]}/100', "Weight":f'{x["Weight"]}%', "Contribution (pts)":round(x["Weighted points"], 1)})
         st.dataframe(pd.DataFrame(score_rows), use_container_width=True, hide_index=True)
         st.caption("Checks passed is a simple count; timeframe scores weight Trend 40%, Momentum 35% and Confirmation 25%. Overall weights are Monthly / Weekly / Daily 35% / 35% / 30%. Identical scores can occur when pass/fail patterns match; the diagnostic panel below shows signal strength without changing the checklist score.")
 
