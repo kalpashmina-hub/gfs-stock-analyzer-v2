@@ -232,50 +232,88 @@ def split_nearby_levels(points, reference_price, max_distance_pct=10):
 
 
 def fib_levels(df: pd.DataFrame, current_price=None):
-    """Calculate retracements and assess whether the selected swing remains valid."""
-    swings = confirmed_swings(df, window=5, lookback=250)
+    """Select a confirmed, material daily swing and assess its current validity.
+
+    A candidate must alternate direction, span at least five sessions and move
+    at least the greater of 3% or two ATR(14). Old anchors remain visible but
+    are explicitly marked stale rather than presented as an active setup.
+    """
+    d = df.dropna(subset=["High", "Low", "Close"]).tail(250).copy()
+    swings = confirmed_swings(d, window=5, lookback=250)
     if len(swings) < 2:
         return None, "Insufficient confirmed swing history", "Unavailable"
 
+    # ATR(14) adapts the minimum impulse requirement to the stock's volatility.
+    previous_close = d.Close.shift(1)
+    true_range = pd.concat([
+        d.High - d.Low,
+        (d.High - previous_close).abs(),
+        (d.Low - previous_close).abs(),
+    ], axis=1).max(axis=1)
+    atr = true_range.rolling(14, min_periods=14).mean().iloc[-1]
+    latest_close = float(d.Close.iloc[-1])
+    if pd.isna(atr) or latest_close <= 0:
+        return None, "Insufficient data to validate swing size (ATR unavailable)", "Unavailable"
+
     pair = None
-    # Search backwards for the latest meaningful opposite-direction swing pair.
     for i in range(len(swings) - 1, 0, -1):
         first, second = swings[i-1], swings[i]
         if first["kind"] == second["kind"]:
             continue
-        move = abs(second["price"] - first["price"]) / max(first["price"], second["price"])
-        if move >= 0.03:
-            pair = (first, second)
+        try:
+            first_pos = d.index.get_loc(pd.Timestamp(first["date"]))
+            second_pos = d.index.get_loc(pd.Timestamp(second["date"]))
+        except KeyError:
+            continue
+        span = second_pos - first_pos
+        if span < 5:
+            continue
+        move_abs = abs(float(second["price"]) - float(first["price"]))
+        move_pct = move_abs / float(first["price"]) * 100
+        minimum_move = max(float(first["price"]) * 0.03, 2.0 * float(atr))
+        if move_abs >= minimum_move:
+            pair = (first, second, move_pct, span, len(d) - 1 - second_pos)
             break
     if pair is None:
-        return None, "No sufficiently large confirmed swing found", "Unavailable"
+        return None, "No confirmed swing meets the minimum size and duration checks (≥3% or 2× ATR, across at least 5 sessions)", "Unavailable"
 
-    first, second = pair
-    low = min(first["price"], second["price"])
-    high = max(first["price"], second["price"])
+    first, second, move_pct, span, age_sessions = pair
+    low = min(float(first["price"]), float(second["price"]))
+    high = max(float(first["price"]), float(second["price"]))
+    first_date = pd.Timestamp(first["date"])
+    second_date = pd.Timestamp(second["date"])
+    price = float(current_price) if current_price is not None else latest_close
+
     if first["kind"] == "Low" and second["kind"] == "High":
-        label = f"Up-swing retracement ({pd.Timestamp(first['date']).strftime('%d %b')} low to {pd.Timestamp(second['date']).strftime('%d %b')} high)"
+        direction = "Up-swing"
+        label = (f"Up-swing retracement ({first_date.strftime('%d %b %Y')} low to "
+                 f"{second_date.strftime('%d %b %Y')} high; {move_pct:.1f}% move; "
+                 f"{span} sessions; anchor age {age_sessions} sessions)")
         levels = {k: high - (high-low)*v for k, v in
                   [("23.6%",.236),("38.2%",.382),("50.0%",.5),("61.8%",.618),("78.6%",.786)]}
-    else:
-        label = f"Down-swing retracement ({pd.Timestamp(first['date']).strftime('%d %b')} high to {pd.Timestamp(second['date']).strftime('%d %b')} low)"
-        levels = {k: low + (high-low)*v for k, v in
-                  [("23.6%",.236),("38.2%",.382),("50.0%",.5),("61.8%",.618),("78.6%",.786)]}
-    price = float(current_price) if current_price is not None else float(df.Close.iloc[-1])
-    if first["kind"] == "Low" and second["kind"] == "High":
         if price < low:
             status = f"Invalidated: latest close ₹{price:,.2f} is below the swing low ₹{low:,.2f}. Do not treat these retracements as active support."
         elif price > high:
-            status = f"Price is above the swing high ₹{high:,.2f}; this upswing has extended. Retracement levels are historical reference levels, not an active pullback setup."
+            status = f"Upswing extended: latest close ₹{price:,.2f} is above the swing high ₹{high:,.2f}. These are historical reference levels, not an active pullback setup."
+        elif age_sessions > 90:
+            status = f"Stale reference: the swing high is {age_sessions} sessions old. Keep these levels for historical context only; wait for a fresh confirmed swing."
         else:
-            status = f"Swing remains within its anchor range (₹{low:,.2f}–₹{high:,.2f}); retracement levels can be monitored as potential reaction zones."
+            status = f"Valid anchor range: latest close is within ₹{low:,.2f}–₹{high:,.2f}. Treat Fibonacci prices as potential reaction zones, not confirmed support."
     else:
+        direction = "Down-swing"
+        label = (f"Down-swing retracement ({first_date.strftime('%d %b %Y')} high to "
+                 f"{second_date.strftime('%d %b %Y')} low; {move_pct:.1f}% move; "
+                 f"{span} sessions; anchor age {age_sessions} sessions)")
+        levels = {k: low + (high-low)*v for k, v in
+                  [("23.6%",.236),("38.2%",.382),("50.0%",.5),("61.8%",.618),("78.6%",.786)]}
         if price > high:
             status = f"Invalidated: latest close ₹{price:,.2f} is above the swing high ₹{high:,.2f}. Do not treat these retracements as active resistance."
         elif price < low:
-            status = f"Price is below the swing low ₹{low:,.2f}; this downswing has extended. Retracement levels are historical reference levels, not an active pullback setup."
+            status = f"Downswing extended: latest close ₹{price:,.2f} is below the swing low ₹{low:,.2f}. These are historical reference levels, not an active pullback setup."
+        elif age_sessions > 90:
+            status = f"Stale reference: the swing low is {age_sessions} sessions old. Keep these levels for historical context only; wait for a fresh confirmed swing."
         else:
-            status = f"Swing remains within its anchor range (₹{low:,.2f}–₹{high:,.2f}); retracement levels can be monitored as potential reaction zones."
+            status = f"Valid anchor range: latest close is within ₹{low:,.2f}–₹{high:,.2f}. Treat Fibonacci prices as potential reaction zones, not confirmed resistance."
     return levels, label, status
 
 
@@ -560,7 +598,8 @@ if run:
             st.caption(fib_name)
             if fib_status.startswith("Invalidated:"):
                 st.warning(fib_status)
-            elif fib_status.startswith("Price is above") or fib_status.startswith("Price is below"):
+            elif (fib_status.startswith("Upswing extended") or fib_status.startswith("Downswing extended")
+                  or fib_status.startswith("Stale reference")):
                 st.info(fib_status)
             else:
                 st.success(fib_status)
