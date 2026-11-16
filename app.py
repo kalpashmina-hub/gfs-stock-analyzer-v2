@@ -97,14 +97,16 @@ def completed_resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
     return bars.loc[bars.index.normalize() <= today]
 
 
-def evaluate(df: pd.DataFrame, label: str, weight: int, is_daily=False):
+def evaluate(df: pd.DataFrame, label: str, weight: int, is_daily=False, fast_ema=20, slow_ema=50):
     if len(df) < 60:
         return None
     r = df.iloc[-1]
     prev = df.iloc[-2]
+    close_check = f"Close above EMA{fast_ema}"
+    ema_stack_check = f"EMA{fast_ema} above EMA{slow_ema}"
     checks = {
-        "Close above EMA20": bool(pd.notna(r.EMA20) and r.Close > r.EMA20),
-        "EMA20 above EMA50": bool(pd.notna(r.EMA50) and r.EMA20 > r.EMA50),
+        close_check: bool(pd.notna(r.get(f"EMA{fast_ema}")) and r.Close > r.get(f"EMA{fast_ema}")),
+        ema_stack_check: bool(pd.notna(r.get(f"EMA{slow_ema}")) and r.get(f"EMA{fast_ema}") > r.get(f"EMA{slow_ema}")),
         "RSI above 50": bool(pd.notna(r.RSI) and r.RSI > 50),
         "RSI above its 9-period average": bool(pd.notna(r.RSI_MA9) and r.RSI > r.RSI_MA9),
         "MACD histogram positive": bool(pd.notna(r.MACD_HIST) and r.MACD_HIST > 0),
@@ -112,9 +114,9 @@ def evaluate(df: pd.DataFrame, label: str, weight: int, is_daily=False):
     }
     if is_daily:
         checks["Close above SMA200"] = bool(pd.notna(r.SMA200) and r.Close > r.SMA200)
-    # Group related signals so four momentum checks cannot outweigh the
-    # underlying price-trend structure. The daily SMA200 check belongs to trend.
-    trend_checks = ["Close above EMA20", "EMA20 above EMA50"]
+    # Group related signals so momentum checks cannot outweigh price structure.
+    # The daily SMA200 check belongs to trend.
+    trend_checks = [close_check, ema_stack_check]
     if is_daily:
         trend_checks.append("Close above SMA200")
     momentum_checks = ["RSI above 50", "MACD histogram positive"]
@@ -383,7 +385,7 @@ if run:
         daily = indicators(raw)
         weekly = indicators(completed_resample_ohlcv(raw, "W-FRI"))
         monthly = indicators(completed_resample_ohlcv(raw, "ME"))
-        results = [evaluate(monthly, "Grandfather / Monthly", 35), evaluate(weekly, "Father / Weekly", 35), evaluate(daily, "Son / Daily", 30, True)]
+        results = [evaluate(monthly, "Grandfather / Monthly", 35, fast_ema=10, slow_ema=20), evaluate(weekly, "Father / Weekly", 35), evaluate(daily, "Son / Daily", 30, True)]
         if any(x is None for x in results):
             st.error("Insufficient history after resampling. Upload a longer price history.")
             st.stop()
@@ -461,11 +463,14 @@ if run:
                 rsi_zone = "Strong (60–70)"
             else:
                 rsi_zone = "Extended (≥70)"
-            ema20 = current.get("EMA20", np.nan)
-            ema50 = current.get("EMA50", np.nan)
+            # Use the agreed EMA pair for each GFS timeframe:
+            # Monthly 10/20; Weekly and Daily 20/50.
+            fast_period, slow_period = (10, 20) if "Monthly" in frame_name else (20, 50)
+            fast_ema = current.get(f"EMA{fast_period}", np.nan)
+            slow_ema = current.get(f"EMA{slow_period}", np.nan)
             close_value = current.get("Close", np.nan)
-            distance_ema20 = (close_value / ema20 - 1) * 100 if pd.notna(ema20) and ema20 else np.nan
-            distance_ema50 = (close_value / ema50 - 1) * 100 if pd.notna(ema50) and ema50 else np.nan
+            distance_fast_ema = (close_value / fast_ema - 1) * 100 if pd.notna(fast_ema) and fast_ema else np.nan
+            distance_slow_ema = (close_value / slow_ema - 1) * 100 if pd.notna(slow_ema) and slow_ema else np.nan
             hist_now = current.get("MACD_HIST", np.nan)
             hist_prev = previous.get("MACD_HIST", np.nan)
             if pd.isna(hist_now) or pd.isna(hist_prev):
@@ -484,13 +489,14 @@ if run:
                 "Timeframe": frame_name,
                 "RSI (14)": fmt(rsi_value),
                 "RSI zone": rsi_zone,
-                "Close vs EMA20": f"{distance_ema20:+.1f}%" if pd.notna(distance_ema20) else "—",
-                "Close vs EMA50": f"{distance_ema50:+.1f}%" if pd.notna(distance_ema50) else "—",
+                "EMA pair": f"{fast_period}/{slow_period}",
+                "Close vs fast EMA": f"{distance_fast_ema:+.1f}%" if pd.notna(distance_fast_ema) else "—",
+                "Close vs slow EMA": f"{distance_slow_ema:+.1f}%" if pd.notna(distance_slow_ema) else "—",
                 "MACD hist (% of close)": f"{(hist_now / close_value) * 100:+.3f}%" if pd.notna(hist_now) and pd.notna(close_value) and close_value else "—",
                 "MACD reading": macd_read,
             })
         st.dataframe(pd.DataFrame(diagnostic_rows), use_container_width=True, hide_index=True)
-        st.caption("RSI bands and moving-average distances add context to the binary checklist. A large positive distance can mean price is extended rather than offering a good entry. MACD readings compare the latest completed bar with the previous completed bar. These diagnostics do not alter the GFS score.")
+        st.caption("EMA pairs follow the GFS framework: Monthly 10/20; Weekly and Daily 20/50. RSI bands and moving-average distances add context to the binary checklist. A large positive distance can mean price is extended rather than offering a good entry. MACD readings compare the latest completed bar with the previous completed bar. These diagnostics do not alter the GFS score.")
 
         st.markdown("**Volume confirmation (separate from GFS score)**")
         volume_rows = []
