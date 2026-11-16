@@ -361,32 +361,40 @@ if run:
 
         st.subheader("Multi-timeframe support and resistance")
         level_specs = [
-            ("Grandfather / Monthly — major levels", monthly, 2, 60),
-            ("Father / Weekly — intermediate levels", weekly, 3, 104),
+            ("Grandfather / Monthly — major levels", monthly, 2, 120),
+            ("Father / Weekly — intermediate levels", weekly, 3, 260),
             ("Son / Daily — immediate levels", daily, 5, 250),
         ]
         for level_title, level_df, swing_window, swing_lookback in level_specs:
             st.markdown(f"**{level_title}**")
             supports, resistances = pivots(level_df, window=swing_window, lookback=swing_lookback)
+            reference_close = float(level_df.Close.iloc[-1])
+            def level_rows(points, prefix):
+                rows = []
+                for i, point in enumerate(points):
+                    level_price = float(point["price"])
+                    distance = (level_price / reference_close - 1) * 100
+                    rows.append({
+                        "Level": f"{prefix} {i+1}",
+                        "Swing date": pd.Timestamp(point["date"]).strftime("%d %b %Y"),
+                        "Price (₹)": fmt(level_price),
+                        "Distance from close": f"{distance:+.1f}%"
+                    })
+                return rows
+            st.caption(f"Reference close for this timeframe: ₹{reference_close:,.2f}")
             left, right = st.columns(2)
             with left:
                 st.caption("Confirmed swing supports")
-                support_table = pd.DataFrame(
-                    [{"Level": f"Support {i+1}", "Swing date": pd.Timestamp(p["date"]).strftime("%d %b %Y"),
-                      "Price (₹)": fmt(p["price"])} for i, p in enumerate(supports)]
-                )
+                support_table = pd.DataFrame(level_rows(supports, "Support"))
                 if support_table.empty:
-                    st.info("No confirmed support below the latest completed close.")
+                    st.info("No confirmed support below the latest completed close in the selected history.")
                 else:
                     st.dataframe(support_table, use_container_width=True, hide_index=True)
             with right:
                 st.caption("Confirmed swing resistances")
-                resistance_table = pd.DataFrame(
-                    [{"Level": f"Resistance {i+1}", "Swing date": pd.Timestamp(p["date"]).strftime("%d %b %Y"),
-                      "Price (₹)": fmt(p["price"])} for i, p in enumerate(resistances)]
-                )
+                resistance_table = pd.DataFrame(level_rows(resistances, "Resistance"))
                 if resistance_table.empty:
-                    st.info("No confirmed resistance above the latest completed close.")
+                    st.info("No confirmed resistance above the latest completed close in the selected history. This does not mean resistance is absent; the latest high may not yet be confirmed.")
                 else:
                     st.dataframe(resistance_table, use_container_width=True, hide_index=True)
 
@@ -400,7 +408,7 @@ if run:
             st.dataframe(fib_table, use_container_width=True, hide_index=True)
         else:
             st.info(fib_name)
-        st.caption("Monthly swings use two completed bars on each side, weekly swings use three, and daily swings use five. Only confirmed pivots are shown; recent bars may not yet qualify. Fibonacci remains based on the latest confirmed daily swing pair. Levels are estimates, not guaranteed turning points.")
+        st.caption("Monthly swings use two completed bars on each side (up to 120 months of history), weekly swings use three (up to 260 weeks), and daily swings use five (up to 250 sessions). Distance is measured from each timeframe's latest completed close, not necessarily the live market price. Only confirmed pivots are shown; recent bars may not yet qualify. Yahoo Finance history is downloaded with auto-adjustment enabled; for uploaded CSVs, verify split/dividend adjustments yourself. Fibonacci remains based on the latest confirmed daily swing pair. Levels are estimates, not guaranteed turning points.")
 
         st.subheader("Fundamental snapshot")
         if info:
