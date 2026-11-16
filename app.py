@@ -214,12 +214,21 @@ def pivots(df: pd.DataFrame, window=5, lookback=250, reference_price=None):
     supports = sorted(
         [p for p in swings if p["kind"] == "Low" and p["price"] < price],
         key=lambda p: p["price"], reverse=True
-    )[:3]
+    )
     resistances = sorted(
         [p for p in swings if p["kind"] == "High" and p["price"] > price],
         key=lambda p: p["price"]
-    )[:3]
+    )
     return supports, resistances
+
+
+def split_nearby_levels(points, reference_price, max_distance_pct=10):
+    """Separate levels within the actionable distance band from farther structural levels."""
+    nearby, major = [], []
+    for point in points:
+        distance_pct = abs(float(point["price"]) / float(reference_price) - 1) * 100
+        (nearby if distance_pct <= max_distance_pct else major).append(point)
+    return nearby[:3], major[:3]
 
 
 def fib_levels(df: pd.DataFrame, current_price=None):
@@ -488,32 +497,45 @@ if run:
             st.markdown(f"**{level_title}**")
             timeframe_close = float(level_df.Close.iloc[-1])
             supports, resistances = pivots(level_df, window=swing_window, lookback=swing_lookback, reference_price=latest_daily_close)
+            nearby_supports, major_supports = split_nearby_levels(supports, latest_daily_close)
+            nearby_resistances, major_resistances = split_nearby_levels(resistances, latest_daily_close)
             def level_rows(points, prefix):
                 rows = []
                 for i, point in enumerate(points):
                     level_price = float(point["price"])
-                    distance_from_timeframe = (level_price / timeframe_close - 1) * 100
                     distance_from_daily = (level_price / latest_daily_close - 1) * 100
                     rows.append({
                         "Level": f"{prefix} {i+1}",
                         "Swing date": pd.Timestamp(point["date"]).strftime("%d %b %Y"),
                         "Price (₹)": fmt(level_price),
-                        "Distance": f"{distance_from_daily:+.1f}%"
+                        "Distance from daily close": f"{distance_from_daily:+.1f}%"
                     })
                 return rows
-            st.caption(f"Levels selected relative to latest daily close ₹{latest_daily_close:,.2f} (this timeframe close: ₹{timeframe_close:,.2f}).")
-            st.caption("Confirmed swing supports")
-            support_table = pd.DataFrame(level_rows(supports, "Support"))
+            st.caption(f"Reference: latest daily close ₹{latest_daily_close:,.2f} (timeframe close: ₹{timeframe_close:,.2f}). Nearby band: within 10% of the daily close.")
+            st.caption("Nearby confirmed support — potential trading reference")
+            support_table = pd.DataFrame(level_rows(nearby_supports, "Support"))
             if support_table.empty:
-                st.info("No confirmed support below the latest daily close in the selected history.")
+                st.info("No confirmed support within 10% below the latest daily close.")
             else:
                 st.dataframe(support_table, use_container_width=True, hide_index=True)
-            st.caption("Confirmed swing resistances")
-            resistance_table = pd.DataFrame(level_rows(resistances, "Resistance"))
+            st.caption("Nearby confirmed resistance — potential trading reference")
+            resistance_table = pd.DataFrame(level_rows(nearby_resistances, "Resistance"))
             if resistance_table.empty:
-                st.info("No confirmed resistance above the latest daily close in the selected history. This does not mean resistance is absent; the latest high may not yet be confirmed.")
+                st.info("No confirmed resistance within 10% above the latest daily close.")
             else:
                 st.dataframe(resistance_table, use_container_width=True, hide_index=True)
+            st.caption("Major historical support — beyond the 10% band")
+            major_support_table = pd.DataFrame(level_rows(major_supports, "Major support"))
+            if major_support_table.empty:
+                st.info("No additional confirmed major support in the selected history.")
+            else:
+                st.dataframe(major_support_table, use_container_width=True, hide_index=True)
+            st.caption("Major historical resistance — beyond the 10% band")
+            major_resistance_table = pd.DataFrame(level_rows(major_resistances, "Major resistance"))
+            if major_resistance_table.empty:
+                st.info("No additional confirmed major resistance in the selected history.")
+            else:
+                st.dataframe(major_resistance_table, use_container_width=True, hide_index=True)
 
         st.markdown("**Daily Fibonacci retracement**")
         fib, fib_name, fib_status = fib_levels(daily, current_price=latest_daily_close)
@@ -531,7 +553,7 @@ if run:
             st.dataframe(fib_table, use_container_width=True, hide_index=True)
         else:
             st.info(fib_name)
-        st.caption("Monthly swings use two completed bars on each side (up to 120 months of history), weekly swings use three (up to 260 weeks), and daily swings use five (up to 250 sessions). Support and resistance are selected relative to the same latest daily close across all timeframes; distance is shown against the latest daily close to keep the mobile tables compact. Only confirmed pivots are shown; recent bars may not yet qualify. Yahoo Finance history is downloaded with auto-adjustment enabled; for uploaded CSVs, verify split/dividend adjustments yourself. Fibonacci remains based on the latest confirmed daily swing pair. Levels are estimates, not guaranteed turning points.")
+        st.caption("Monthly swings use two completed bars on each side (up to 120 months of history), weekly swings use three (up to 260 weeks), and daily swings use five (up to 250 sessions). Support and resistance are compared with the latest daily close across all timeframes. Levels within 10% are separated from farther major historical levels; the 10% band is a display convention, not a trading rule. Only confirmed pivots are shown; recent bars may not yet qualify. Yahoo Finance history is downloaded with auto-adjustment enabled; for uploaded CSVs, verify split/dividend adjustments yourself. Fibonacci remains based on the latest confirmed daily swing pair. Levels are estimates, not guaranteed turning points.")
 
         st.subheader("Fundamental snapshot")
         if info:
