@@ -189,11 +189,11 @@ def confirmed_swings(df: pd.DataFrame, window=5, lookback=250):
     return alternating
 
 
-def pivots(df: pd.DataFrame, window=5, lookback=250):
-    """Return nearby confirmed swing levels for the supplied timeframe."""
+def pivots(df: pd.DataFrame, window=5, lookback=250, reference_price=None):
+    """Return confirmed swing levels relative to a shared reference price."""
     d = df.tail(lookback)
     swings = confirmed_swings(d, window=window, lookback=lookback)
-    price = float(d.Close.iloc[-1])
+    price = float(reference_price) if reference_price is not None else float(d.Close.iloc[-1])
     supports = sorted(
         [p for p in swings if p["kind"] == "Low" and p["price"] < price],
         key=lambda p: p["price"], reverse=True
@@ -373,22 +373,23 @@ if run:
         ]
         for level_title, level_df, swing_window, swing_lookback in level_specs:
             st.markdown(f"**{level_title}**")
-            supports, resistances = pivots(level_df, window=swing_window, lookback=swing_lookback)
-            reference_close = float(level_df.Close.iloc[-1])
+            timeframe_close = float(level_df.Close.iloc[-1])
+            supports, resistances = pivots(level_df, window=swing_window, lookback=swing_lookback, reference_price=latest_daily_close)
             def level_rows(points, prefix):
                 rows = []
                 for i, point in enumerate(points):
                     level_price = float(point["price"])
-                    distance = (level_price / reference_close - 1) * 100
+                    distance_from_timeframe = (level_price / timeframe_close - 1) * 100
+                    distance_from_daily = (level_price / latest_daily_close - 1) * 100
                     rows.append({
                         "Level": f"{prefix} {i+1}",
                         "Swing date": pd.Timestamp(point["date"]).strftime("%d %b %Y"),
                         "Price (₹)": fmt(level_price),
-                        "Distance from timeframe close": f"{distance:+.1f}%",
-                        "Distance from latest daily close": f"{(level_price / latest_daily_close - 1) * 100:+.1f}%"
+                        "Distance from daily close": f"{distance_from_daily:+.1f}%",
+                        "Distance from timeframe close": f"{distance_from_timeframe:+.1f}%"
                     })
                 return rows
-            st.caption(f"Reference close for this timeframe: ₹{reference_close:,.2f}")
+            st.caption(f"Level selection reference: latest daily close ₹{latest_daily_close:,.2f} | timeframe close: ₹{timeframe_close:,.2f}")
             left, right = st.columns(2)
             with left:
                 st.caption("Confirmed swing supports")
@@ -415,7 +416,7 @@ if run:
             st.dataframe(fib_table, use_container_width=True, hide_index=True)
         else:
             st.info(fib_name)
-        st.caption("Monthly swings use two completed bars on each side (up to 120 months of history), weekly swings use three (up to 260 weeks), and daily swings use five (up to 250 sessions). Distance is measured from each timeframe's latest completed close, not necessarily the live market price. Only confirmed pivots are shown; recent bars may not yet qualify. Yahoo Finance history is downloaded with auto-adjustment enabled; for uploaded CSVs, verify split/dividend adjustments yourself. Fibonacci remains based on the latest confirmed daily swing pair. Levels are estimates, not guaranteed turning points.")
+        st.caption("Monthly swings use two completed bars on each side (up to 120 months of history), weekly swings use three (up to 260 weeks), and daily swings use five (up to 250 sessions). Support and resistance are selected relative to the same latest daily close across all timeframes; the distance columns also show each timeframe's own close for context. Only confirmed pivots are shown; recent bars may not yet qualify. Yahoo Finance history is downloaded with auto-adjustment enabled; for uploaded CSVs, verify split/dividend adjustments yourself. Fibonacci remains based on the latest confirmed daily swing pair. Levels are estimates, not guaranteed turning points.")
 
         st.subheader("Fundamental snapshot")
         if info:
