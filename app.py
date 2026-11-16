@@ -271,13 +271,30 @@ def fib_levels(df: pd.DataFrame, current_price=None):
 
 
 def make_chart(df, title):
-    d = df.tail(220)
+    # Keep the full selected history available; use Plotly range controls to
+    # navigate long histories without forcing thousands of candles into view.
+    d = df.copy()
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=.05, row_heights=[.75,.25])
     fig.add_trace(go.Candlestick(x=d.index, open=d.Open, high=d.High, low=d.Low, close=d.Close, name="Price"), row=1,col=1)
     for col, name in [("EMA10","EMA 10"),("EMA20","EMA 20"),("EMA50","EMA 50"),("SMA200","SMA 200")]:
         if col in d and d[col].notna().any(): fig.add_trace(go.Scatter(x=d.index,y=d[col],name=name,mode="lines"),row=1,col=1)
     fig.add_trace(go.Bar(x=d.index,y=d.Volume,name="Volume"),row=2,col=1)
-    fig.update_layout(title=title, height=650, xaxis_rangeslider_visible=False, legend_orientation="h", margin=dict(l=15,r=15,t=55,b=15))
+    range_buttons = [
+        dict(count=6, label="6m", step="month", stepmode="backward"),
+        dict(count=1, label="1y", step="year", stepmode="backward"),
+        dict(count=3, label="3y", step="year", stepmode="backward"),
+        dict(count=5, label="5y", step="year", stepmode="backward"),
+        dict(step="all", label="All"),
+    ]
+    fig.update_layout(
+        title=title, height=650,
+        xaxis=dict(rangeselector=dict(buttons=range_buttons), rangeslider=dict(visible=True)),
+        legend_orientation="h", margin=dict(l=15,r=15,t=55,b=15)
+    )
+    # Start with a readable one-year view; the range controls expose all
+    # candles from the selected 5y/10y/max history.
+    if len(d.index):
+        fig.update_xaxes(range=[d.index[-1] - pd.DateOffset(years=1), d.index[-1]], row=1, col=1)
     return fig
 
 with st.sidebar:
