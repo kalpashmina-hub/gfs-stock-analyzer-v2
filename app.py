@@ -498,6 +498,17 @@ if run:
             volume_rows.append({"Timeframe": frame, **volume_context(data)})
         st.dataframe(pd.DataFrame(volume_rows), use_container_width=True, hide_index=True)
         st.caption("Relative volume compares the latest completed bar with its 20-period average. Elevated volume is context, not automatically bullish: interpret it with the bar direction, price structure and the next session. Volume is displayed separately and does not change the GFS score.")
+
+        # Highlight potentially weak participation or possible distribution as
+        # entry-timing context only; neither condition changes the GFS score.
+        daily_volume = volume_context(daily)
+        daily_relative_volume = daily.iloc[-1].get("Volume", np.nan) / daily.iloc[-1].get("VOL_MA20", np.nan) if pd.notna(daily.iloc[-1].get("VOL_MA20", np.nan)) and daily.iloc[-1].get("VOL_MA20", np.nan) > 0 else np.nan
+        daily_bar_direction = daily_volume.get("Price direction")
+        if pd.notna(daily_relative_volume) and daily_relative_volume < 0.8 and daily_bar_direction == "Up bar":
+            st.info(f"Volume confirmation caution — the latest daily up-bar traded at {daily_relative_volume:.2f}x its 20-session average volume. The price rise has below-average participation; wait for stronger volume or a constructive retest before treating it as a confirmed breakout.")
+        elif pd.notna(daily_relative_volume) and daily_relative_volume >= 1.5 and daily_bar_direction == "Down bar":
+            st.warning(f"High-volume decline — the latest daily down-bar traded at {daily_relative_volume:.2f}x its 20-session average volume. This may indicate meaningful selling pressure; check the next sessions and nearby support before considering an entry.")
+
         with st.expander("Detailed GFS checklist", expanded=True):
             rows=[]
             for item in results:
