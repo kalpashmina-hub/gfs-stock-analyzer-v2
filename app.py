@@ -493,12 +493,22 @@ if run:
             ("Father / Weekly — intermediate levels", weekly, 3, 260),
             ("Son / Daily — immediate levels", daily, 5, 250),
         ]
+        nearest_level_rows = []
         for level_title, level_df, swing_window, swing_lookback in level_specs:
             st.markdown(f"**{level_title}**")
             timeframe_close = float(level_df.Close.iloc[-1])
             supports, resistances = pivots(level_df, window=swing_window, lookback=swing_lookback, reference_price=latest_daily_close)
             nearby_supports, major_supports = split_nearby_levels(supports, latest_daily_close)
             nearby_resistances, major_resistances = split_nearby_levels(resistances, latest_daily_close)
+            nearest_support = supports[0] if supports else None
+            nearest_resistance = resistances[0] if resistances else None
+            nearest_level_rows.append({
+                "Timeframe": level_title.split(" — ")[0],
+                "Nearest support (₹)": fmt(nearest_support["price"]) if nearest_support else "Not found",
+                "Support distance": f"{(nearest_support['price'] / latest_daily_close - 1) * 100:+.1f}%" if nearest_support else "—",
+                "Nearest resistance (₹)": fmt(nearest_resistance["price"]) if nearest_resistance else "Not found",
+                "Resistance distance": f"{(nearest_resistance['price'] / latest_daily_close - 1) * 100:+.1f}%" if nearest_resistance else "—",
+            })
             def level_rows(points, prefix):
                 rows = []
                 for i, point in enumerate(points):
@@ -536,6 +546,10 @@ if run:
                 st.info("No additional confirmed major resistance in the selected history.")
             else:
                 st.dataframe(major_resistance_table, use_container_width=True, hide_index=True)
+
+        st.markdown("**Nearest support / resistance — quick comparison**")
+        st.dataframe(pd.DataFrame(nearest_level_rows), use_container_width=True, hide_index=True)
+        st.caption("This compact comparison highlights the closest confirmed swing below and above the latest daily close in each timeframe. It is a navigation aid; consult the detailed tables for swing dates and historical context.")
 
         st.markdown("**Daily Fibonacci retracement**")
         fib, fib_name, fib_status = fib_levels(daily, current_price=latest_daily_close)
