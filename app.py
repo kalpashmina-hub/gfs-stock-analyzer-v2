@@ -136,6 +136,7 @@ def evaluate(df: pd.DataFrame, label: str, weight: int, is_daily=False):
             "SMA200":r.get("SMA200", np.nan),
             "Trend score":round(trend_pct), "Momentum score":round(momentum_pct),
             "Confirmation score":round(confirmation_pct),
+            "Checks passed":sum(checks.values()), "Checks total":len(checks),
             "MACD histogram":r.MACD_HIST, "Score":round(pct), "Weight":weight,
             "Weighted points":pct*weight/100, "State":state, "Checks":checks,
             "Check groups":check_groups}
@@ -327,9 +328,12 @@ if run:
                     ". Strong momentum can persist, so this does not reduce the GFS trend score; avoid chasing and assess pullbacks, price action and risk/reward before entry.")
         st.caption("Each timeframe score weights Trend 40%, Momentum 35% and Confirmation 25%. Related RSI/MACD checks are grouped so momentum signals do not dominate the underlying price trend. Monthly/weekly/daily composite weights remain 35/35/30. The 0–100 score is a checklist, not a probability of profit or a personalised recommendation; confirm fundamentals, liquidity, news, position sizing and reward/risk before acting.")
 
-        st.subheader("Timeframe indicator dashboard")
-        dashboard = pd.DataFrame([{k:v for k,v in x.items() if k not in ("Checks", "Check groups")} for x in results])
-        st.dataframe(dashboard, use_container_width=True, hide_index=True)
+        st.subheader("GFS score breakdown")
+        score_rows = []
+        for x in results:
+            score_rows.append({"Timeframe":x["Timeframe"], "Checks passed":f'{x["Checks passed"]}/{x["Checks total"]}', "Trend":f'{x["Trend score"]}%', "Momentum":f'{x["Momentum score"]}%', "Confirmation":f'{x["Confirmation score"]}%', "Score":f'{x["Score"]}/100', "Weight":f'{x["Weight"]}%', "Weighted points":round(x["Weighted points"], 1)})
+        st.dataframe(pd.DataFrame(score_rows), use_container_width=True, hide_index=True)
+        st.caption("Checks passed is a simple count; timeframe scores weight Trend 40%, Momentum 35% and Confirmation 25%. Overall weights are Monthly / Weekly / Daily 35% / 35% / 30%.")
         with st.expander("Detailed GFS checklist", expanded=True):
             rows=[]
             for item in results:
@@ -360,8 +364,10 @@ if run:
         st.caption("RSI 40–60 is an assessment zone, not a rigid filter. RSI above 60 can reflect strong momentum; below 30 is not an automatic buy signal.")
 
         st.subheader("Multi-timeframe support and resistance")
+        latest_daily_close = float(daily.Close.iloc[-1])
+        st.caption(f"Cross-timeframe comparison reference: latest daily close ₹{latest_daily_close:,.2f}. Monthly and weekly levels provide structural context; daily levels are more relevant to immediate trade planning.")
         level_specs = [
-            ("Grandfather / Monthly — major levels", monthly, 2, 120),
+            ("Grandfather / Monthly — major historical levels", monthly, 2, 120),
             ("Father / Weekly — intermediate levels", weekly, 3, 260),
             ("Son / Daily — immediate levels", daily, 5, 250),
         ]
@@ -378,7 +384,8 @@ if run:
                         "Level": f"{prefix} {i+1}",
                         "Swing date": pd.Timestamp(point["date"]).strftime("%d %b %Y"),
                         "Price (₹)": fmt(level_price),
-                        "Distance from close": f"{distance:+.1f}%"
+                        "Distance from timeframe close": f"{distance:+.1f}%",
+                        "Distance from latest daily close": f"{(level_price / latest_daily_close - 1) * 100:+.1f}%"
                     })
                 return rows
             st.caption(f"Reference close for this timeframe: ₹{reference_close:,.2f}")
