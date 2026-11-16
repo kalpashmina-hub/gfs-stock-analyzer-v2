@@ -205,11 +205,11 @@ def pivots(df: pd.DataFrame, window=5, lookback=250, reference_price=None):
     return supports, resistances
 
 
-def fib_levels(df: pd.DataFrame):
-    """Calculate retracements from the latest confirmed alternating swing pair."""
+def fib_levels(df: pd.DataFrame, current_price=None):
+    """Calculate retracements and assess whether the selected swing remains valid."""
     swings = confirmed_swings(df, window=5, lookback=250)
     if len(swings) < 2:
-        return None, "Insufficient confirmed swing history"
+        return None, "Insufficient confirmed swing history", "Unavailable"
 
     pair = None
     # Search backwards for the latest meaningful opposite-direction swing pair.
@@ -222,7 +222,7 @@ def fib_levels(df: pd.DataFrame):
             pair = (first, second)
             break
     if pair is None:
-        return None, "No sufficiently large confirmed swing found"
+        return None, "No sufficiently large confirmed swing found", "Unavailable"
 
     first, second = pair
     low = min(first["price"], second["price"])
@@ -235,7 +235,22 @@ def fib_levels(df: pd.DataFrame):
         label = f"Down-swing retracement ({pd.Timestamp(first['date']).strftime('%d %b')} high to {pd.Timestamp(second['date']).strftime('%d %b')} low)"
         levels = {k: low + (high-low)*v for k, v in
                   [("23.6%",.236),("38.2%",.382),("50.0%",.5),("61.8%",.618),("78.6%",.786)]}
-    return levels, label
+    price = float(current_price) if current_price is not None else float(df.Close.iloc[-1])
+    if first["kind"] == "Low" and second["kind"] == "High":
+        if price < low:
+            status = f"Invalidated: latest close ₹{price:,.2f} is below the swing low ₹{low:,.2f}. Do not treat these retracements as active support."
+        elif price > high:
+            status = f"Price is above the swing high ₹{high:,.2f}; this upswing has extended. Retracement levels are historical reference levels, not an active pullback setup."
+        else:
+            status = f"Swing remains within its anchor range (₹{low:,.2f}–₹{high:,.2f}); retracement levels can be monitored as potential reaction zones."
+    else:
+        if price > high:
+            status = f"Invalidated: latest close ₹{price:,.2f} is above the swing high ₹{high:,.2f}. Do not treat these retracements as active resistance."
+        elif price < low:
+            status = f"Price is below the swing low ₹{low:,.2f}; this downswing has extended. Retracement levels are historical reference levels, not an active pullback setup."
+        else:
+            status = f"Swing remains within its anchor range (₹{low:,.2f}–₹{high:,.2f}); retracement levels can be monitored as potential reaction zones."
+    return levels, label, status
 
 
 def make_chart(df, title):
@@ -385,38 +400,40 @@ if run:
                         "Level": f"{prefix} {i+1}",
                         "Swing date": pd.Timestamp(point["date"]).strftime("%d %b %Y"),
                         "Price (₹)": fmt(level_price),
-                        "Distance from daily close": f"{distance_from_daily:+.1f}%",
-                        "Distance from timeframe close": f"{distance_from_timeframe:+.1f}%"
+                        "Distance": f"{distance_from_daily:+.1f}%"
                     })
                 return rows
-            st.caption(f"Level selection reference: latest daily close ₹{latest_daily_close:,.2f} | timeframe close: ₹{timeframe_close:,.2f}")
-            left, right = st.columns(2)
-            with left:
-                st.caption("Confirmed swing supports")
-                support_table = pd.DataFrame(level_rows(supports, "Support"))
-                if support_table.empty:
-                    st.info("No confirmed support below the latest completed close in the selected history.")
-                else:
-                    st.dataframe(support_table, use_container_width=True, hide_index=True)
-            with right:
-                st.caption("Confirmed swing resistances")
-                resistance_table = pd.DataFrame(level_rows(resistances, "Resistance"))
-                if resistance_table.empty:
-                    st.info("No confirmed resistance above the latest completed close in the selected history. This does not mean resistance is absent; the latest high may not yet be confirmed.")
-                else:
-                    st.dataframe(resistance_table, use_container_width=True, hide_index=True)
+            st.caption(f"Levels selected relative to latest daily close ₹{latest_daily_close:,.2f} (this timeframe close: ₹{timeframe_close:,.2f}).")
+            st.caption("Confirmed swing supports")
+            support_table = pd.DataFrame(level_rows(supports, "Support"))
+            if support_table.empty:
+                st.info("No confirmed support below the latest daily close in the selected history.")
+            else:
+                st.dataframe(support_table, use_container_width=True, hide_index=True)
+            st.caption("Confirmed swing resistances")
+            resistance_table = pd.DataFrame(level_rows(resistances, "Resistance"))
+            if resistance_table.empty:
+                st.info("No confirmed resistance above the latest daily close in the selected history. This does not mean resistance is absent; the latest high may not yet be confirmed.")
+            else:
+                st.dataframe(resistance_table, use_container_width=True, hide_index=True)
 
         st.markdown("**Daily Fibonacci retracement**")
-        fib, fib_name = fib_levels(daily)
+        fib, fib_name, fib_status = fib_levels(daily, current_price=latest_daily_close)
         if fib:
             fib_table = pd.DataFrame(
-                [{"Retracement": level, "Price (₹)": fmt(value)} for level, value in fib.items()]
+                [{"Retracement": level, "Price (₹)": fmt(value), "Distance from daily close": f"{(value / latest_daily_close - 1) * 100:+.1f}%"} for level, value in fib.items()]
             )
             st.caption(fib_name)
+            if fib_status.startswith("Invalidated:"):
+                st.warning(fib_status)
+            elif fib_status.startswith("Price is above") or fib_status.startswith("Price is below"):
+                st.info(fib_status)
+            else:
+                st.success(fib_status)
             st.dataframe(fib_table, use_container_width=True, hide_index=True)
         else:
             st.info(fib_name)
-        st.caption("Monthly swings use two completed bars on each side (up to 120 months of history), weekly swings use three (up to 260 weeks), and daily swings use five (up to 250 sessions). Support and resistance are selected relative to the same latest daily close across all timeframes; the distance columns also show each timeframe's own close for context. Only confirmed pivots are shown; recent bars may not yet qualify. Yahoo Finance history is downloaded with auto-adjustment enabled; for uploaded CSVs, verify split/dividend adjustments yourself. Fibonacci remains based on the latest confirmed daily swing pair. Levels are estimates, not guaranteed turning points.")
+        st.caption("Monthly swings use two completed bars on each side (up to 120 months of history), weekly swings use three (up to 260 weeks), and daily swings use five (up to 250 sessions). Support and resistance are selected relative to the same latest daily close across all timeframes; distance is shown against the latest daily close to keep the mobile tables compact. Only confirmed pivots are shown; recent bars may not yet qualify. Yahoo Finance history is downloaded with auto-adjustment enabled; for uploaded CSVs, verify split/dividend adjustments yourself. Fibonacci remains based on the latest confirmed daily swing pair. Levels are estimates, not guaranteed turning points.")
 
         st.subheader("Fundamental snapshot")
         if info:
