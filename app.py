@@ -295,7 +295,10 @@ if run:
         cols = st.columns(4)
         for col, item in zip(cols, [g, f, s, {"Score":total, "State":"Composite GFS", "Timeframe":"Overall"}]):
             with col:
-                st.metric(item["Timeframe"], f"{item['Score']}%" if item["Timeframe"] != "Overall" else f"{total}/100", item.get("State", ""))
+                # State is a category, not a numeric delta. Show it separately
+                # so Streamlit does not imply that even a "Weak" state is positive.
+                st.metric(item["Timeframe"], f"{item['Score']}%" if item["Timeframe"] != "Overall" else f"{total}/100")
+                st.caption(item.get("State", ""))
         st.subheader("GFS decision framework")
         if g["State"] == "Bullish" and f["State"] == "Bullish" and s["State"] == "Bullish":
             verdict = "STRONG BUY CANDIDATE — only after entry, valuation and risk checks"
