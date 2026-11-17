@@ -888,8 +888,8 @@ if st.session_state.get("analysis_requested", False):
                 ("Debt / equity", "debtToEquity", "debt_equity_percent"),
                 ("Current ratio", "currentRatio", "ratio"), ("Quick ratio", "quickRatio", "ratio"),
                 ("Total debt (₹)", "totalDebt", "inr"), ("Total cash (₹)", "totalCash", "inr"),
-                ("Profit margin", "profitMargins", "percent"), ("Revenue growth", "revenueGrowth", "percent"),
-                ("Earnings growth", "earningsGrowth", "percent"), ("52-week high (₹)", "fiftyTwoWeekHigh", "rupees"),
+                ("Profit margin", "profitMargins", "percent"), ("Revenue growth (provider period)", "revenueGrowth", "percent"),
+                ("Earnings growth (provider period)", "earningsGrowth", "percent"), ("52-week high (₹)", "fiftyTwoWeekHigh", "rupees"),
                 ("52-week low (₹)", "fiftyTwoWeekLow", "rupees")]
             fund_rows=[]
             market_cap = info.get("marketCap")
@@ -903,16 +903,17 @@ if st.session_state.get("analysis_requested", False):
                     if kind=="percent":
                         value = f"{numeric_value*100:.2f}%"
                         if key in ("revenueGrowth", "earningsGrowth") and abs(numeric_value) >= 1:
-                            note = "Verify period / base effect"
+                            note = "Provider period/basis not exposed; verify filings and low-base effects"
                     elif kind=="ratio":
                         value=f"{numeric_value:,.2f}x"
                     elif kind=="debt_equity_percent":
                         # Yahoo's debtToEquity field is expressed as a percentage,
                         # not as a plain ratio: 218.56 means 218.56% = 2.19x.
                         value=f"{numeric_value/100:,.2f}x ({numeric_value:,.2f}%)"
-                        note = "Yahoo percentage convention; verify against latest balance sheet"
+                        note = "Yahoo percentage convention; verify against latest balance sheet and reporting basis"
                     elif kind=="inr":
                         value=format_market_cap_inr(numeric_value)
+                        note = "Provider-reported amount; debt and cash are not directly comparable to company net-cash measure without matching definitions, dates and restricted-cash treatment"
                     elif kind=="rupees":
                         value=f"₹{numeric_value:,.2f}"
                     fund_rows.append({"Metric":label,"Provider value":value,"Data-quality note":note})
@@ -923,7 +924,7 @@ if st.session_state.get("analysis_requested", False):
                 st.info("No fundamental fields returned by the provider.")
         else:
             st.info("Fundamentals are not included for CSV uploads. Use company annual reports, quarterly results and exchange filings for verification.")
-        st.caption("Fundamental data is provider-reported and may be missing or stale. Yahoo reports debt/equity as a percentage (for example, 218.56 means 218.56% or 2.19x); verify the figure and definition against the latest balance sheet. Growth figures of 100% or more in either direction are flagged for manual verification because reporting periods, low-base effects and exceptional items can distort comparisons. Total debt and cash are shown in Indian crore units when supplied. This snapshot is not a substitute for audited statements, quarterly results, shareholding and exchange announcements.")
+        st.caption("Fundamental data is provider-reported and may be missing or stale. Growth periods and comparison bases are not reliably exposed in this table; verify revenue and earnings growth against quarterly and annual filings. Large growth percentages may reflect a low base or exceptional items. Debt and cash are provider-reported amounts; do not subtract them to infer company net cash without matching reporting dates, definitions, restricted-cash treatment, leases and investments. Yahoo debt/equity is shown using its percentage convention; verify the figure and reporting basis against the latest balance sheet. This snapshot is not a substitute for audited statements, quarterly results, shareholding and exchange announcements.")
 
         st.subheader("Export")
         csv = daily.to_csv(index_label="Date").encode("utf-8")
