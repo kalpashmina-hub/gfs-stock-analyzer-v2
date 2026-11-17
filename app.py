@@ -73,22 +73,6 @@ def clean_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def wilder_average(series: pd.Series, period: int) -> pd.Series:
-    """Wilder smoothing seeded with the first period simple average."""
-    values = series.astype(float).to_numpy()
-    output = np.full(len(values), np.nan, dtype=float)
-    valid = np.flatnonzero(np.isfinite(values))
-    if len(valid) < period:
-        return pd.Series(output, index=series.index)
-    first = int(valid[0])
-    seed_end = first + period
-    if seed_end > len(values) or not np.isfinite(values[first:seed_end]).all():
-        return pd.Series(output, index=series.index)
-    output[seed_end - 1] = float(np.mean(values[first:seed_end]))
-    for i in range(seed_end, len(values)):
-        if np.isfinite(values[i]) and np.isfinite(output[i - 1]):
-            output[i] = ((period - 1) * output[i - 1] + values[i]) / period
-    return pd.Series(output, index=series.index)
-def wilder_average(series: pd.Series, period: int) -> pd.Series:
     """Wilder smoothing seeded with the simple average of the first period."""
     values = series.astype(float).to_numpy()
     output = np.full(len(values), np.nan, dtype=float)
@@ -292,9 +276,15 @@ def confirmed_swings(df: pd.DataFrame, window=5, lookback=250):
     for i in range(window, len(d) - window):
         low_window = d.Low.iloc[i-window:i+window+1]
         high_window = d.High.iloc[i-window:i+window+1]
-        if d.Low.iloc[i] == low_window.min():
+        is_swing_low = d.Low.iloc[i] == low_window.min()
+        is_swing_high = d.High.iloc[i] == high_window.max()
+        # Daily OHLC cannot reveal which extreme happened first. Exclude
+        # outside bars that qualify as both a swing high and a swing low.
+        if is_swing_low and is_swing_high:
+            continue
+        if is_swing_low:
             points.append({"date": d.index[i], "price": float(d.Low.iloc[i]), "kind": "Low"})
-        if d.High.iloc[i] == high_window.max():
+        elif is_swing_high:
             points.append({"date": d.index[i], "price": float(d.High.iloc[i]), "kind": "High"})
     points.sort(key=lambda x: x["date"])
 
@@ -377,7 +367,7 @@ def fib_levels(df: pd.DataFrame, current_price=None):
         (d.High - previous_close).abs(),
         (d.Low - previous_close).abs(),
     ], axis=1).max(axis=1)
-    atr = true_range.rolling(14, min_periods=14).mean().iloc[-1]
+    atr = wilder_average(true_range, 14).iloc[-1]
     latest_close = float(d.Close.iloc[-1])
     if pd.isna(atr) or latest_close <= 0:
         return None, "Insufficient data to validate swing size (ATR unavailable)", "Unavailable"
