@@ -406,7 +406,7 @@ def make_chart(df, title, reset_revision=0):
         title=title, height=650,
         xaxis=dict(
             rangeselector=dict(
-                buttons=range_buttons, active=1,
+                buttons=range_buttons,
                 font=dict(size=12),
                 bgcolor="#f2f4f7",
                 activecolor="#d7e6f7",
