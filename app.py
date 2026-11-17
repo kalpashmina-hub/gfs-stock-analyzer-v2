@@ -404,7 +404,9 @@ def make_chart(df, title):
     ]
     fig.update_layout(
         title=title, height=650,
-        xaxis=dict(rangeselector=dict(buttons=range_buttons), rangeslider=dict(visible=True)),
+        xaxis=dict(rangeselector=dict(buttons=range_buttons), rangeslider=dict(visible=False)),
+        dragmode=False,
+        uirevision=f"{title}-stable",
         legend_orientation="h", margin=dict(l=15,r=15,t=55,b=15)
     )
     # Start with a readable one-year view; the range controls expose all
@@ -681,7 +683,11 @@ if run:
             st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
         st.subheader("Daily chart")
-        st.plotly_chart(make_chart(daily, f"{symbol} — Daily candles and moving averages"), use_container_width=True)
+        st.plotly_chart(
+            make_chart(daily, f"{symbol} — Daily candles and moving averages"),
+            use_container_width=True,
+            config={"scrollZoom": False, "displayModeBar": False, "doubleClick": False}
+        )
         st.subheader("Momentum dashboard")
         mom = daily.tail(250)
         rsi_fig = go.Figure()
@@ -690,15 +696,15 @@ if run:
         for level in (30, 50, 70):
             rsi_fig.add_hline(y=level, line_dash="dot", annotation_text=str(level))
         rsi_fig.update_yaxes(range=[0, 100], title="RSI")
-        rsi_fig.update_layout(title="RSI 14 with 9-period average", height=320, margin=dict(l=15, r=15, t=45, b=15), legend_orientation="h")
-        st.plotly_chart(rsi_fig, use_container_width=True)
+        rsi_fig.update_layout(title="RSI 14 with 9-period average", height=320, margin=dict(l=15, r=15, t=45, b=15), legend_orientation="h", dragmode=False, uirevision=f"{symbol}-rsi-stable")
+        st.plotly_chart(rsi_fig, use_container_width=True, config={"scrollZoom": False, "displayModeBar": False, "doubleClick": False})
 
         macd_fig = go.Figure()
         macd_fig.add_trace(go.Bar(x=mom.index, y=mom["MACD_HIST"], name="Histogram"))
         macd_fig.add_trace(go.Scatter(x=mom.index, y=mom["MACD"], name="MACD", mode="lines"))
         macd_fig.add_trace(go.Scatter(x=mom.index, y=mom["MACD_SIGNAL"], name="Signal", mode="lines"))
-        macd_fig.update_layout(title="MACD (12, 26, 9)", height=320, margin=dict(l=15, r=15, t=45, b=15), legend_orientation="h")
-        st.plotly_chart(macd_fig, use_container_width=True)
+        macd_fig.update_layout(title="MACD (12, 26, 9)", height=320, margin=dict(l=15, r=15, t=45, b=15), legend_orientation="h", dragmode=False, uirevision=f"{symbol}-macd-stable")
+        st.plotly_chart(macd_fig, use_container_width=True, config={"scrollZoom": False, "displayModeBar": False, "doubleClick": False})
         st.caption("RSI 40–60 is an assessment zone, not a rigid filter. RSI above 60 can reflect strong momentum; below 30 is not an automatic buy signal.")
 
         st.subheader("Multi-timeframe support and resistance")
