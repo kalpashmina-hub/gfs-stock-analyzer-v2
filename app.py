@@ -417,7 +417,15 @@ if run:
         total = round(sum(x["Weighted points"] for x in results))
         st.subheader(info.get("longName", symbol) + (f" ({yf_symbol})" if source.startswith("Yahoo") else ""))
         st.caption(f"Source: {source_label}  |  Last available daily bar: {s['Date']}  |  {len(raw):,} daily sessions")
-        st.warning("Data quality: verify the latest bar date and corporate-action adjustments. Yahoo Finance is an unofficial source; CSV data quality depends on the uploaded file.")
+        latest_bar_date = pd.Timestamp(raw.index[-1]).normalize()
+        today_for_freshness = pd.Timestamp.now(tz="Asia/Kolkata").tz_localize(None).normalize()
+        data_age_days = (today_for_freshness - latest_bar_date).days
+        if data_age_days > 5:
+            st.error(f"Stale-data warning: the latest daily bar is {data_age_days} calendar days old ({latest_bar_date.strftime('%d %b %Y')}). Do not use the current GFS score for a fresh entry until the data feed is updated.")
+        elif data_age_days < 0:
+            st.error(f"Data-date warning: the latest daily bar ({latest_bar_date.strftime('%d %b %Y')}) is in the future. Verify the uploaded file or provider data before relying on this analysis.")
+        else:
+            st.warning("Data quality: verify the latest bar date and corporate-action adjustments. Yahoo Finance is an unofficial source; CSV data quality depends on the uploaded file.")
 
         cols = st.columns(4)
         for col, item in zip(cols, [g, f, s, {"Score":total, "State":"Composite GFS", "Timeframe":"Overall"}]):
@@ -486,10 +494,15 @@ if run:
         # Grandfather score. It is informational only and never enters GFS weights.
         developing_monthly_raw = resample_ohlcv(raw, "ME")
         today_local = pd.Timestamp.now(tz="Asia/Kolkata").tz_localize(None).normalize()
-        if (not developing_monthly_raw.empty
-                and developing_monthly_raw.index[-1].year == today_local.year
-                and developing_monthly_raw.index[-1].month == today_local.month
-                and developing_monthly_raw.index[-1].normalize() > today_local):
+        latest_raw_date = pd.Timestamp(raw.index[-1]).normalize()
+        current_month_end = latest_raw_date.to_period("M").to_timestamp("M")
+        confirmed_month_ends = set(monthly.index.normalize())
+        current_month_is_unconfirmed = (
+            latest_raw_date.year == today_local.year
+            and latest_raw_date.month == today_local.month
+            and current_month_end not in confirmed_month_ends
+        )
+        if not developing_monthly_raw.empty and current_month_is_unconfirmed:
             developing_monthly = indicators(developing_monthly_raw)
             provisional = developing_monthly.iloc[-1]
             previous_confirmed = monthly.iloc[-1]
@@ -752,7 +765,7 @@ if run:
                 fund_rows.append({"Metric":"Market cap", "Provider value":format_market_cap_inr(market_cap), "Data-quality note":""})
             for label,key,kind in fields:
                 value=info.get(key)
-                if value is not None:
+                if value is not None and pd.notna(pd.to_numeric(value, errors="coerce")):
                     note = ""
                     if kind=="percent":
                         numeric_value = pd.to_numeric(value, errors="coerce")
