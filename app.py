@@ -7,6 +7,7 @@ import pandas as pd
 import streamlit as st
 import yfinance as yf
 import plotly.graph_objects as go
+from fundamental_data import validate_fundamental_upload, compare_sources, latest_filing_status
 from plotly.subplots import make_subplots
 
 st.set_page_config(page_title="GFS Stock Analyzer V2", page_icon="📈", layout="wide")
@@ -941,7 +942,42 @@ if st.session_state.get("analysis_requested", False):
                 st.info("No fundamental fields returned by the provider.")
         else:
             st.info("Fundamentals are not included for CSV uploads. Use company annual reports, quarterly results and exchange filings for verification.")
-        st.caption("Fundamental data is provider-reported and may be missing or stale. Growth periods and comparison bases are not reliably exposed in this table; verify revenue and earnings growth against quarterly and annual filings. Large growth percentages may reflect a low base or exceptional items. Debt and cash are provider-reported amounts; do not subtract them to infer company net cash without matching reporting dates, definitions, restricted-cash treatment, leases and investments. Yahoo debt/equity is shown using its percentage convention; verify the figure and reporting basis against the latest balance sheet. This snapshot is not a substitute for audited statements, quarterly results, shareholding and exchange announcements.")
+        st.caption("Fundamental data is provider-reported and may be missing or stale. Growth periods and comparison bases are not reliably exposed in this table. Verify against audited statements, quarterly results and exchange announcements.")
+
+        st.markdown("**Official filing intake and free-source reconciliation (beta)**")
+        st.caption("Upload a normalized CSV prepared from NSE/BSE filings or the company's investor-relations results. Each metric must retain its own period, consolidated/standalone basis, units, filing date and source link. This intake validates provenance and compares sources; it does not yet calculate a fundamental score or automatically scrape exchange websites.")
+        template = pd.DataFrame(columns=["metric", "value", "period_end", "basis", "unit", "source_name", "source_url", "filing_date"])
+        st.download_button("Download filing CSV template", template.to_csv(index=False).encode("utf-8"),
+                           file_name="GFS_fundamental_filing_template.csv", mime="text/csv")
+        filing_upload = st.file_uploader("Upload normalized fundamental filing CSV", type=["csv"], key="fundamental_filing_csv")
+        if filing_upload is not None:
+            try:
+                intake = validate_fundamental_upload(pd.read_csv(filing_upload))
+                for message in intake.errors:
+                    st.error(message)
+                for message in intake.warnings:
+                    st.warning(message)
+                if intake.errors:
+                    st.info("Resolve the validation errors before using this filing data.")
+                elif not intake.data.empty:
+                    st.success(f"Validated {len(intake.data)} filing rows. Values remain separate by reporting period and basis.")
+                    status_table = latest_filing_status(intake.data)
+                    if not status_table.empty:
+                        st.markdown("**Filing coverage**")
+                        st.dataframe(status_table, use_container_width=True, hide_index=True)
+                    st.markdown("**Source-level filing data**")
+                    display_data = intake.data.copy()
+                    for date_col in ("period_end", "filing_date"):
+                        display_data[date_col] = display_data[date_col].dt.strftime("%d %b %Y")
+                    st.dataframe(display_data, use_container_width=True, hide_index=True)
+                    disagreements = compare_sources(intake.data)
+                    if not disagreements.empty:
+                        st.markdown("**Cross-source differences requiring review**")
+                        st.dataframe(disagreements, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("No same-period, same-basis, same-unit duplicate source pairs were available for comparison.")
+            except Exception as exc:
+                st.error(f"Could not read the filing CSV: {exc}")
 
         st.subheader("Export")
         csv = daily.to_csv(index_label="Date").encode("utf-8")
