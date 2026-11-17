@@ -833,7 +833,8 @@ if st.session_state.get("analysis_requested", False):
                         "Swing evidence": f"{evidence_label} · {evidence} pivot(s) within ±1.5%"
                     })
                 return rows
-            st.caption(f"Swing source: {level_title.split(" — ")[0]} | Current-price reference: ₹{latest_daily_close:,.2f} | Last completed timeframe close: ₹{timeframe_close:,.2f}. Support/resistance roles are classified against the current daily price; swing dates and timeframe close provide structural context. Nearby band: within 10% of the daily close.")
+            timeframe_name = level_title.split(" — ")[0]
+            st.caption(f"Swing source: {timeframe_name} | Current-price reference: ₹{latest_daily_close:,.2f} | Last completed timeframe close: ₹{timeframe_close:,.2f}. Support/resistance roles are classified against the current daily price; swing dates and timeframe close provide structural context. Nearby band: within 10% of the daily close.")
             st.caption("Nearby confirmed support — potential trading reference. Repeated swing areas have at least two confirmed same-type pivots within 1.5% of the displayed price; this is a clustering clue, not proof of a defended level.")
             support_table = pd.DataFrame(level_rows(nearby_supports, "Support"))
             if support_table.empty:
@@ -890,7 +891,7 @@ if st.session_state.get("analysis_requested", False):
                 ("Return on equity", "returnOnEquity", "percent"),
                 ("Debt / equity", "debtToEquity", "debt_equity_percent"),
                 ("Current ratio", "currentRatio", "ratio"), ("Quick ratio", "quickRatio", "ratio"),
-                ("Total debt (provider currency)", "totalDebt", "inr"), ("Total cash (provider currency)", "totalCash", "inr"),
+                ("Total debt", "totalDebt", "inr"), ("Total cash", "totalCash", "inr"),
                 ("Profit margin", "profitMargins", "percent"), ("Revenue growth (provider period)", "revenueGrowth", "percent"),
                 ("Earnings growth (provider period)", "earningsGrowth", "percent"), ("52-week high (₹)", "fiftyTwoWeekHigh", "rupees"),
                 ("52-week low (₹)", "fiftyTwoWeekLow", "rupees")]
