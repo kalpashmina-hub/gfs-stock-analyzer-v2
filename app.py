@@ -949,6 +949,15 @@ if st.session_state.get("analysis_requested", False):
         template = pd.DataFrame(columns=["metric", "value", "period_end", "basis", "unit", "source_name", "source_url", "filing_date"])
         st.download_button("Download filing CSV template", template.to_csv(index=False).encode("utf-8"),
                            file_name="GFS_fundamental_filing_template.csv", mime="text/csv")
+        prepared_tcs_path = "data/tcs_q2_fy27_fundamentals.csv"
+        try:
+            with open(prepared_tcs_path, "rb") as prepared_file:
+                st.download_button("Download prepared TCS Q2 FY27 filing data (beta)",
+                                   prepared_file.read(),
+                                   file_name="TCS_Q2_FY27_filing_data_beta.csv",
+                                   mime="text/csv")
+        except FileNotFoundError:
+            st.caption("Prepared TCS filing dataset is not available in this app build yet.")
         filing_upload = st.file_uploader("Upload normalized fundamental filing CSV", type=["csv"], key="fundamental_filing_csv")
         if filing_upload is not None:
             try:
