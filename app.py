@@ -36,7 +36,9 @@ def clean_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
         d = d.set_index(date_col)
     d.index = pd.to_datetime(d.index, errors="coerce")
     if getattr(d.index, "tz", None) is not None:
-        d.index = d.index.tz_localize(None)
+        # Convert timezone-aware source timestamps to Indian exchange time
+        # before removing timezone metadata. Naive CSV dates are assumed IST.
+        d.index = d.index.tz_convert("Asia/Kolkata").tz_localize(None)
     d = d[~d.index.isna()].sort_index()
     d = d.loc[~d.index.duplicated(keep="last")]
     # Map adjusted/alternate close header if needed.
