@@ -97,9 +97,21 @@ def validate_fundamental_upload(raw: pd.DataFrame) -> FundamentalIntake:
             "values. This is agreement in the uploaded file, not proof of independent "
             "verification; inspect each source link."
         )
-    non_primary = ~df["source_name"].str.lower().apply(
-        lambda x: any(hint in x for hint in PRIMARY_SOURCE_HINTS)
-    )
+    # Classify provenance using both the human-readable label and the actual
+    # URL host. This avoids false secondary-source warnings when a primary
+    # company release is labelled with a report title rather than "company".
+    def is_primary_source(row) -> bool:
+        name = str(row["source_name"]).strip().lower()
+        host = (urlparse(str(row["source_url"])).hostname or "").lower()
+        name_match = any(hint in name for hint in PRIMARY_SOURCE_HINTS)
+        host_match = (
+            host == "nseindia.com" or host.endswith(".nseindia.com")
+            or host == "bseindia.com" or host.endswith(".bseindia.com")
+            or host == "tcs.com" or host.endswith(".tcs.com")
+        )
+        return name_match or host_match
+
+    non_primary = ~df.apply(is_primary_source, axis=1)
     if non_primary.any():
         warnings.append(
             "Some rows are secondary-source data. Cross-check them against the original "
