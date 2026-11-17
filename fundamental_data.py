@@ -7,8 +7,6 @@ and records provenance so that unsupported or stale values are not silently scor
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable
-
 import pandas as pd
 
 REQUIRED_COLUMNS = {
@@ -71,8 +69,15 @@ def validate_fundamental_upload(raw: pd.DataFrame) -> FundamentalIntake:
     )
     if conflicting_duplicates:
         warnings.append(
-            "Different values exist for the same metric, period, basis and unit. "
-            "Review original/revised filings and source definitions before using them."
+            "Conflicting values exist for the same metric, period, basis and unit. "
+            "Check original versus revised filings and source definitions; do not select "
+            "a value automatically."
+        )
+    elif any(len(group) > 1 for _, group in duplicate_groups):
+        warnings.append(
+            "Multiple sources report the same metric, period, basis and unit with matching "
+            "values. This is agreement in the uploaded file, not proof of independent "
+            "verification; inspect each source link."
         )
     non_primary = ~df["source_name"].str.lower().apply(
         lambda x: any(hint in x for hint in PRIMARY_SOURCE_HINTS)
