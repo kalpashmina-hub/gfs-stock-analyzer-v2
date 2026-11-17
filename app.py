@@ -263,6 +263,27 @@ def pivots(df: pd.DataFrame, window=5, lookback=250, reference_price=None):
         [p for p in swings if p["kind"] == "High" and p["price"] > price],
         key=lambda p: p["price"]
     )
+
+    # Count other confirmed swing points of the same type within a narrow
+    # price band. This is a transparent clustering proxy, not a claim that
+    # every visit was a successful support/resistance reaction.
+    def add_cluster_context(levels, kind, tolerance_pct=1.5):
+        enriched = []
+        same_kind = [p for p in swings if p["kind"] == kind]
+        for level in levels:
+            level_price = float(level["price"])
+            cluster_count = sum(
+                abs(float(candidate["price"]) / level_price - 1) * 100 <= tolerance_pct
+                for candidate in same_kind
+            )
+            item = dict(level)
+            item["cluster_count"] = cluster_count
+            item["level_context"] = "Repeated swing area" if cluster_count >= 2 else "Single confirmed swing"
+            enriched.append(item)
+        return enriched
+
+    supports = add_cluster_context(supports, "Low")
+    resistances = add_cluster_context(resistances, "High")
     return supports, resistances
 
 
@@ -706,8 +727,10 @@ if run:
                 "Timeframe": level_title.split(" — ")[0],
                 "Nearest support (₹)": fmt(nearest_support["price"]) if nearest_support else "Not found",
                 "Support distance": f"{(nearest_support['price'] / latest_daily_close - 1) * 100:+.1f}%" if nearest_support else "—",
+                "Support context": nearest_support.get("level_context", "—") if nearest_support else "—",
                 "Nearest resistance (₹)": fmt(nearest_resistance["price"]) if nearest_resistance else "Not found",
                 "Resistance distance": f"{(nearest_resistance['price'] / latest_daily_close - 1) * 100:+.1f}%" if nearest_resistance else "—",
+                "Resistance context": nearest_resistance.get("level_context", "—") if nearest_resistance else "—",
             })
             def level_rows(points, prefix):
                 rows = []
@@ -718,17 +741,19 @@ if run:
                         "Level": f"{prefix} {i+1}",
                         "Swing date": pd.Timestamp(point["date"]).strftime("%d %b %Y"),
                         "Price (₹)": fmt(level_price),
-                        "Distance from daily close": f"{distance_from_daily:+.1f}%"
+                        "Distance from daily close": f"{distance_from_daily:+.1f}%",
+                        "Nearby confirmed swings (±1.5%)": point.get("cluster_count", 1),
+                        "Level context": point.get("level_context", "Single confirmed swing")
                     })
                 return rows
             st.caption(f"Swing source: {level_title.split(" — ")[0]} | Current-price reference: ₹{latest_daily_close:,.2f} | Last completed timeframe close: ₹{timeframe_close:,.2f}. Support/resistance roles are classified against the current daily price; swing dates and timeframe close provide structural context. Nearby band: within 10% of the daily close.")
-            st.caption("Nearby confirmed support — potential trading reference")
+            st.caption("Nearby confirmed support — potential trading reference. Repeated swing areas have at least two confirmed same-type pivots within 1.5% of the displayed price; this is a clustering clue, not proof of a defended level.")
             support_table = pd.DataFrame(level_rows(nearby_supports, "Support"))
             if support_table.empty:
                 st.info("No confirmed support within 10% below the latest daily close.")
             else:
                 st.dataframe(support_table, use_container_width=True, hide_index=True)
-            st.caption("Nearby confirmed resistance — potential trading reference")
+            st.caption("Nearby confirmed resistance — potential trading reference. Repeated swing areas have at least two confirmed same-type pivots within 1.5% of the displayed price; this is a clustering clue, not proof of a defended level.")
             resistance_table = pd.DataFrame(level_rows(nearby_resistances, "Resistance"))
             if resistance_table.empty:
                 st.info("No confirmed resistance within 10% above the latest daily close.")
@@ -749,7 +774,7 @@ if run:
 
         st.markdown("**Nearest support / resistance — quick comparison**")
         st.dataframe(pd.DataFrame(nearest_level_rows), use_container_width=True, hide_index=True)
-        st.caption("Each row uses confirmed swing points from that timeframe, classified as support below or resistance above the latest daily close. The monthly/weekly/daily swing source gives structural context; this is not the same as the timeframe trend score. Consult the detailed tables for swing dates and distances.")
+        st.caption("Each row uses confirmed swing points from that timeframe, classified against the latest daily close. Repeated swing area means multiple confirmed same-type pivots fall within 1.5% of the reference price; it is a historical clustering measure, not a tested bounce count or guarantee. A single swing remains a valid reference but has less repeated-pivot evidence. Monthly/weekly levels provide structural context; daily levels are more relevant to immediate planning.")
 
         st.markdown("**Daily Fibonacci retracement**")
         fib, fib_name, fib_status = fib_levels(daily, current_price=latest_daily_close)
