@@ -88,6 +88,24 @@ def wilder_average(series: pd.Series, period: int) -> pd.Series:
         if np.isfinite(values[i]) and np.isfinite(output[i - 1]):
             output[i] = ((period - 1) * output[i - 1] + values[i]) / period
     return pd.Series(output, index=series.index)
+def wilder_average(series: pd.Series, period: int) -> pd.Series:
+    """Wilder smoothing seeded with the simple average of the first period."""
+    values = series.astype(float).to_numpy()
+    output = np.full(len(values), np.nan, dtype=float)
+    valid = np.flatnonzero(np.isfinite(values))
+    if len(valid) < period:
+        return pd.Series(output, index=series.index)
+    first = int(valid[0])
+    seed_end = first + period
+    if seed_end > len(values) or not np.isfinite(values[first:seed_end]).all():
+        return pd.Series(output, index=series.index)
+    output[seed_end - 1] = float(np.mean(values[first:seed_end]))
+    for i in range(seed_end, len(values)):
+        if np.isfinite(values[i]) and np.isfinite(output[i - 1]):
+            output[i] = ((period - 1) * output[i - 1] + values[i]) / period
+    return pd.Series(output, index=series.index)
+
+
 def indicators(df: pd.DataFrame) -> pd.DataFrame:
     d = df.copy()
     c = d.Close
@@ -96,7 +114,8 @@ def indicators(df: pd.DataFrame) -> pd.DataFrame:
     for n in (50, 200):
         d[f"SMA{n}"] = c.rolling(n, min_periods=n).mean()
     delta = c.diff()
-    # Standard Wilder RSI: seed with the first 14 actual changes, then smooth.
+    # Standard Wilder RSI: SMA seed from the first 14 price changes,
+    # followed by recursive Wilder smoothing.
     gain = wilder_average(delta.clip(lower=0), 14)
     loss = wilder_average(-delta.clip(upper=0), 14)
     rs = gain / loss.replace(0, np.nan)
@@ -113,7 +132,6 @@ def indicators(df: pd.DataFrame) -> pd.DataFrame:
     # Compare each completed bar with the preceding 20 bars, excluding itself.
     d["VOL_MA20"] = d.Volume.shift(1).rolling(20, min_periods=10).mean()
     return d
-
 
 def resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
     """Resample daily OHLCV data. Labels represent period-end dates."""
