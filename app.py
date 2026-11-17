@@ -890,7 +890,7 @@ if st.session_state.get("analysis_requested", False):
                 ("Return on equity", "returnOnEquity", "percent"),
                 ("Debt / equity", "debtToEquity", "debt_equity_percent"),
                 ("Current ratio", "currentRatio", "ratio"), ("Quick ratio", "quickRatio", "ratio"),
-                ("Total debt (₹)", "totalDebt", "inr"), ("Total cash (₹)", "totalCash", "inr"),
+                ("Total debt (provider currency)", "totalDebt", "inr"), ("Total cash (provider currency)", "totalCash", "inr"),
                 ("Profit margin", "profitMargins", "percent"), ("Revenue growth (provider period)", "revenueGrowth", "percent"),
                 ("Earnings growth (provider period)", "earningsGrowth", "percent"), ("52-week high (₹)", "fiftyTwoWeekHigh", "rupees"),
                 ("52-week low (₹)", "fiftyTwoWeekLow", "rupees")]
