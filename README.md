@@ -67,3 +67,22 @@ The labels (Strong Buy Candidate, Buy on Confirmation, Watchlist, Avoid Fresh En
 - Support/resistance pivots and Fibonacci levels are mechanical estimates; validate swing anchors visually.
 - No live feed, broker integration, automated alerts, backtesting or trade execution.
 - No guarantee of data availability or investment outcome.
+
+
+## Fundamental filing intake (beta)
+
+The app includes a source-aware CSV intake for fundamental figures. It is intentionally separate from the existing Yahoo Finance snapshot and does not yet generate a fundamental score.
+
+1. Open the **Fundamental snapshot** section and download the filing CSV template.
+2. For each metric, enter its numeric value, period end, reporting basis (exactly `consolidated` or `standalone`), unit, source name, source URL and filing date.
+3. Prefer the original NSE/BSE filing or the company's investor-relations filing. Use free secondary sites only as cross-checks, not as the primary authority.
+4. Do not combine consolidated and standalone values, quarterly and annual periods, or unlike units.
+5. If an original filing has been revised, resolve which version is authoritative before uploading. The app flags duplicate metric/period/basis rows rather than silently choosing one.
+6. The app reports differences only when metric, period, basis and unit match. A difference is a review flag, not proof that one source is wrong.
+
+NSE filing pages:
+- Financial Results: https://www.nseindia.com/companies-listing/corporate-filings-financial-results
+- Integrated Filing – Financials: https://www.nseindia.com/companies-listing/corporate-integrated-filing
+- XBRL filing information and taxonomy: https://www.nseindia.com/static/companies-listing/xbrl-information
+
+Current limitation: this beta uses a user-supplied normalized CSV. It does not automatically download or scrape exchange filings. Automatic ingestion will be added only after stable access, file formats, source terms and revision handling are verified. No fundamental score is calculated from unverified or incomplete data.
