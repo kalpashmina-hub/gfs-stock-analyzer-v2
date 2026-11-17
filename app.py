@@ -975,6 +975,7 @@ if st.session_state.get("analysis_requested", False):
                         st.markdown("**Filing coverage**")
                         st.dataframe(status_table, use_container_width=True, hide_index=True)
                     st.markdown("**Source-level filing data**")
+                    st.caption("Source class is a label inferred from the supplied source name; it does not prove that a filing link was independently opened or that the value was audited.")
                     display_data = intake.data.copy()
                     for date_col in ("period_end", "filing_date"):
                         display_data[date_col] = display_data[date_col].dt.strftime("%d %b %Y")
@@ -984,7 +985,7 @@ if st.session_state.get("analysis_requested", False):
                         st.markdown("**Cross-source differences requiring review**")
                         st.dataframe(disagreements, use_container_width=True, hide_index=True)
                     else:
-                        st.info("No same-period, same-basis, same-unit duplicate source pairs were available for comparison.")
+                        st.info("No same-period, same-basis, same-unit multi-source pairs were uploaded. This means no cross-source comparison was possible; it is not a clean verification result.")
             except Exception as exc:
                 st.error(f"Could not read the filing CSV: {exc}")
 
