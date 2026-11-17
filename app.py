@@ -253,11 +253,14 @@ def volume_context(df: pd.DataFrame):
             "Price direction": direction}
 
 
-def format_market_cap_inr(value):
-    """Format Yahoo Finance market capitalisation in Indian numbering units."""
+def format_provider_amount(value, currency):
+    """Format a provider amount without assuming its currency."""
     if value is None or pd.isna(value):
         return "—"
     amount = float(value)
+    code = str(currency or "").upper()
+    if code != "INR":
+        return f"{amount:,.2f} {code or 'currency not supplied'}"
     crore = amount / 10_000_000
     lakh_crore = crore / 100_000
     if lakh_crore >= 1:
@@ -892,9 +895,12 @@ if st.session_state.get("analysis_requested", False):
                 ("Earnings growth (provider period)", "earningsGrowth", "percent"), ("52-week high (₹)", "fiftyTwoWeekHigh", "rupees"),
                 ("52-week low (₹)", "fiftyTwoWeekLow", "rupees")]
             fund_rows=[]
+            quote_currency = info.get("currency")
+            financial_currency = info.get("financialCurrency") or quote_currency
             market_cap = info.get("marketCap")
             if market_cap is not None:
-                fund_rows.append({"Metric":"Market cap", "Provider value":format_market_cap_inr(market_cap), "Data-quality note":""})
+                cap_note = "" if str(quote_currency or "").upper() == "INR" else "Currency not confirmed as INR; amount shown in provider currency"
+                fund_rows.append({"Metric":"Market cap", "Provider value":format_provider_amount(market_cap, quote_currency), "Data-quality note":cap_note})
             for label,key,kind in fields:
                 value=info.get(key)
                 if value is not None and pd.notna(pd.to_numeric(value, errors="coerce")):
@@ -912,7 +918,7 @@ if st.session_state.get("analysis_requested", False):
                         value=f"{numeric_value/100:,.2f}x ({numeric_value:,.2f}%)"
                         note = "Yahoo percentage convention; verify against latest balance sheet and reporting basis"
                     elif kind=="inr":
-                        value=format_market_cap_inr(numeric_value)
+                        value=format_provider_amount(numeric_value, financial_currency)
                         note = "Provider-reported amount; debt and cash are not directly comparable to company net-cash measure without matching definitions, dates and restricted-cash treatment"
                     elif kind=="rupees":
                         value=f"₹{numeric_value:,.2f}"
