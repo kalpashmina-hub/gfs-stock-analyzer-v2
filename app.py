@@ -630,7 +630,13 @@ if run:
         for level_title, level_df, swing_window, swing_lookback in level_specs:
             st.markdown(f"**{level_title}**")
             timeframe_close = float(level_df.Close.iloc[-1])
-            supports, resistances = pivots(level_df, window=swing_window, lookback=swing_lookback, reference_price=latest_daily_close)
+            # Classify a swing as support/resistance against its own timeframe
+            # close. Using the latest daily close here can mislabel a monthly
+            # swing above the monthly close as "support" merely because the
+            # daily price has already recovered above it.
+            supports, resistances = pivots(level_df, window=swing_window, lookback=swing_lookback, reference_price=timeframe_close)
+            # Keep the common daily-close distance for cross-timeframe comparison,
+            # but retain the timeframe-based support/resistance classification.
             nearby_supports, major_supports = split_nearby_levels(supports, latest_daily_close)
             nearby_resistances, major_resistances = split_nearby_levels(resistances, latest_daily_close)
             nearest_support = supports[0] if supports else None
