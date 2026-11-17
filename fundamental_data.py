@@ -111,11 +111,26 @@ def validate_fundamental_upload(raw: pd.DataFrame) -> FundamentalIntake:
         )
         return name_match or host_match
 
-    non_primary = ~df.apply(is_primary_source, axis=1)
+    df["source_class"] = df.apply(
+        lambda row: (
+            "Primary — stock exchange filing"
+            if (urlparse(str(row["source_url"])).hostname or "").lower().endswith(
+                ("nseindia.com", "bseindia.com")
+            )
+            else "Primary — company disclosure"
+            if (urlparse(str(row["source_url"])).hostname or "").lower().endswith("tcs.com")
+            else "Primary — recognised source label"
+            if any(hint in str(row["source_name"]).strip().lower() for hint in PRIMARY_SOURCE_HINTS)
+            else "Secondary — cross-check only"
+        ),
+        axis=1,
+    )
+    non_primary = df["source_class"].eq("Secondary — cross-check only")
     if non_primary.any():
+        source_names = sorted(df.loc[non_primary, "source_name"].astype(str).unique())
         warnings.append(
-            "Some rows are secondary-source data. Cross-check them against the original "
-            "company or exchange filing before treating them as authoritative."
+            "Secondary-source rows detected: " + "; ".join(source_names)
+            + ". Check the source classification table below."
         )
     if df["filing_date"].gt(pd.Timestamp.today().normalize()).any():
         warnings.append("A filing date is in the future; check the source data.")
