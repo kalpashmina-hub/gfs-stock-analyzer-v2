@@ -72,6 +72,22 @@ def clean_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
     return d[REQUIRED]
 
 
+def wilder_average(series: pd.Series, period: int) -> pd.Series:
+    """Wilder smoothing seeded with the first period simple average."""
+    values = series.astype(float).to_numpy()
+    output = np.full(len(values), np.nan, dtype=float)
+    valid = np.flatnonzero(np.isfinite(values))
+    if len(valid) < period:
+        return pd.Series(output, index=series.index)
+    first = int(valid[0])
+    seed_end = first + period
+    if seed_end > len(values) or not np.isfinite(values[first:seed_end]).all():
+        return pd.Series(output, index=series.index)
+    output[seed_end - 1] = float(np.mean(values[first:seed_end]))
+    for i in range(seed_end, len(values)):
+        if np.isfinite(values[i]) and np.isfinite(output[i - 1]):
+            output[i] = ((period - 1) * output[i - 1] + values[i]) / period
+    return pd.Series(output, index=series.index)
 def indicators(df: pd.DataFrame) -> pd.DataFrame:
     d = df.copy()
     c = d.Close
@@ -80,12 +96,14 @@ def indicators(df: pd.DataFrame) -> pd.DataFrame:
     for n in (50, 200):
         d[f"SMA{n}"] = c.rolling(n, min_periods=n).mean()
     delta = c.diff()
-    gain = delta.clip(lower=0).ewm(alpha=1/14, adjust=False, min_periods=14).mean()
-    loss = (-delta.clip(upper=0)).ewm(alpha=1/14, adjust=False, min_periods=14).mean()
+    # Standard Wilder RSI: seed with the first 14 actual changes, then smooth.
+    gain = wilder_average(delta.clip(lower=0), 14)
+    loss = wilder_average(-delta.clip(upper=0), 14)
     rs = gain / loss.replace(0, np.nan)
     d["RSI"] = 100 - (100 / (1 + rs))
     d.loc[(loss == 0) & (gain > 0), "RSI"] = 100
     d.loc[(gain == 0) & (loss > 0), "RSI"] = 0
+    d.loc[(gain == 0) & (loss == 0), "RSI"] = 50
     d["RSI_MA9"] = d.RSI.rolling(9, min_periods=9).mean()
     e12 = c.ewm(span=12, adjust=False).mean()
     e26 = c.ewm(span=26, adjust=False).mean()
@@ -143,7 +161,7 @@ def completed_resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
     now = pd.Timestamp.now(tz="Asia/Kolkata")
     today = now.tz_localize(None).normalize()
     latest_daily_date = pd.Timestamp(df.index.max()).normalize()
-    market_close_buffer_passed = (now.hour, now.minute) >= (16, 0)
+    market_close_buffer_passed = (now.hour, now.minute) >= (16, 15)
     period_dates = bars.index.normalize()
 
     completed = period_dates < today
