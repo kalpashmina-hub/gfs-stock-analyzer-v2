@@ -427,12 +427,40 @@ if run:
                 st.metric(item["Timeframe"], f"{item['Score']}%" if item["Timeframe"] != "Overall" else f"{total}/100")
                 st.caption(item.get("State", ""))
         st.subheader("GFS decision framework")
-        if g["State"] == "Bullish" and f["State"] == "Bullish" and s["State"] == "Bullish":
-            verdict = "STRONG BUY CANDIDATE — only after entry, valuation and risk checks"
+        # A high composite checklist score is not enough for the strongest
+        # label: require confirmation on both shorter timeframes and at least
+        # average daily participation. These are decision gates, not score
+        # penalties, so the published GFS score remains unchanged.
+        daily_volume_row = volume_context(daily)
+        daily_relative_volume = (
+            daily.iloc[-1].get("Volume", np.nan) / daily.iloc[-1].get("VOL_MA20", np.nan)
+            if pd.notna(daily.iloc[-1].get("VOL_MA20", np.nan))
+            and daily.iloc[-1].get("VOL_MA20", np.nan) > 0 else np.nan
+        )
+        confirmation_ready = (
+            f["Confirmation score"] >= 50
+            and s["Confirmation score"] >= 50
+        )
+        volume_ready = pd.notna(daily_relative_volume) and daily_relative_volume >= 0.8
+        all_timeframes_bullish = (
+            g["State"] == "Bullish" and f["State"] == "Bullish" and s["State"] == "Bullish"
+        )
+        if all_timeframes_bullish and confirmation_ready and volume_ready:
+            verdict = "STRONG BUY CANDIDATE — trend, confirmation and volume gates passed; still check entry, valuation and risk"
             st.success(verdict)
         elif g["State"] == "Bullish" and f["State"] in ("Bullish", "Improving") and s["State"] != "Weak":
-            verdict = "BUY ON CONFIRMATION — require price-action and volume confirmation"
+            verdict = "BUY ON CONFIRMATION — trend is constructive, but wait for stronger daily confirmation and/or volume"
             st.success(verdict)
+            missing_gates = []
+            if not confirmation_ready:
+                missing_gates.append("weekly and/or daily confirmation score is below 50%")
+            if not volume_ready:
+                missing_gates.append(
+                    f"daily volume is {daily_relative_volume:.2f}x its 20-session average"
+                    if pd.notna(daily_relative_volume) else "daily volume confirmation is unavailable"
+                )
+            if missing_gates:
+                st.info("Strong-buy gates not yet met: " + "; ".join(missing_gates) + ".")
         elif g["State"] != "Weak" and (f["State"] == "Improving" or s["State"] == "Improving"):
             verdict = "WATCHLIST — wait for clearer weekly/daily alignment"
             st.warning(verdict)
@@ -732,7 +760,10 @@ if run:
                         if key in ("revenueGrowth", "earningsGrowth") and pd.notna(numeric_value) and abs(numeric_value) >= 1:
                             note = "Unusually large growth figure — verify reporting period, base effect and company filing"
                     elif kind=="ratio": value=f"{value:,.2f}x"
-                    elif kind=="provider_ratio": value=f"{value:,.2f} (provider unit; verify definition)"
+                    elif kind=="provider_ratio":
+                        raw_ratio = float(value)
+                        conditional_equivalent = f" (≈{raw_ratio/100:.2f}x if Yahoo field is percentage-scaled)" if abs(raw_ratio) >= 10 else ""
+                        value = f"{raw_ratio:,.2f} raw{conditional_equivalent}"
                     elif kind=="rupees": value=f"₹{value:,.2f}"
                     fund_rows.append({"Metric":label,"Provider value":value,"Data-quality note":note})
             if fund_rows:
@@ -741,7 +772,7 @@ if run:
                 st.info("No fundamental fields returned by the provider.")
         else:
             st.info("Fundamentals are not included for CSV uploads. Use company annual reports, quarterly results and exchange filings for verification.")
-        st.caption("Fundamental data is provider-reported and may be missing or stale. Growth figures of 100% or more in either direction are flagged for manual verification because reporting periods, low-base effects and exceptional items can distort comparisons. Debt/equity is shown in the provider's raw unit because Yahoo field conventions can vary; verify it against company filings. This snapshot is not a substitute for audited statements, quarterly results, shareholding and exchange announcements.")
+        st.caption("Fundamental data is provider-reported and may be missing or stale. Growth figures of 100% or more in either direction are flagged for manual verification because reporting periods, low-base effects and exceptional items can distort comparisons. Debt/equity is shown as a raw Yahoo field; the x-times equivalent is conditional because provider conventions and datasets can change. Verify the ratio and its definition against company filings. This snapshot is not a substitute for audited statements, quarterly results, shareholding and exchange announcements.")
 
         st.subheader("Export")
         csv = daily.to_csv(index_label="Date").encode("utf-8")
