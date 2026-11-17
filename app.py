@@ -84,17 +84,28 @@ def resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
 
 
 def completed_resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
-    """Return only periods whose calendar end date has passed in India.
+    """Return only fully completed weekly/monthly periods in India time.
 
-    This prevents the developing current week/month from influencing the
-    confirmed Father/Grandfather scores. The latest period remains visible
-    in the daily data and is deliberately not promoted to a confirmed signal.
+    A period whose calendar end date is today is not considered complete
+    until after the NSE session has closed and today's daily bar is present.
+    Periods ending before today are complete, including holiday-shortened
+    weeks/months. This avoids promoting a still-forming Friday/month-end bar
+    into the confirmed Father/Grandfather scores.
     """
     bars = resample_ohlcv(df, rule)
     if bars.empty:
         return bars
-    today = pd.Timestamp.now(tz="Asia/Kolkata").tz_localize(None).normalize()
-    return bars.loc[bars.index.normalize() <= today]
+
+    now = pd.Timestamp.now(tz="Asia/Kolkata")
+    today = now.tz_localize(None).normalize()
+    latest_daily_date = pd.Timestamp(df.index.max()).normalize()
+    market_close_buffer_passed = (now.hour, now.minute) >= (16, 0)
+    period_dates = bars.index.normalize()
+
+    completed = period_dates < today
+    if market_close_buffer_passed and latest_daily_date == today:
+        completed = completed | (period_dates == today)
+    return bars.loc[completed]
 
 
 def evaluate(df: pd.DataFrame, label: str, weight: int, is_daily=False, fast_ema=20, slow_ema=50):
