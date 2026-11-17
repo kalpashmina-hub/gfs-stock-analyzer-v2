@@ -15,7 +15,7 @@ REQUIRED_COLUMNS = {
     "source_name", "source_url", "filing_date",
 }
 ALLOWED_BASIS = {"consolidated", "standalone"}
-PRIMARY_SOURCE_HINTS = ("nse", "bse", "company", "annual report", "exchange")
+PRIMARY_SOURCE_HINTS = ("nse", "bse", "company", "tcs", "annual report", "investor relations", "exchange")
 
 
 @dataclass
