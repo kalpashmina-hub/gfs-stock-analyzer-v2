@@ -396,23 +396,34 @@ def make_chart(df, title, reset_revision=0):
         if col in d and d[col].notna().any(): fig.add_trace(go.Scatter(x=d.index,y=d[col],name=name,mode="lines"),row=1,col=1)
     fig.add_trace(go.Bar(x=d.index,y=d.Volume,name="Volume"),row=2,col=1)
     range_buttons = [
-        dict(count=6, label="6m", step="month", stepmode="backward"),
-        dict(count=1, label="1y", step="year", stepmode="backward"),
-        dict(count=3, label="3y", step="year", stepmode="backward"),
-        dict(count=5, label="5y", step="year", stepmode="backward"),
-        dict(step="all", label="All"),
+        dict(count=6, label="6M", step="month", stepmode="backward"),
+        dict(count=1, label="1Y / RESET", step="year", stepmode="backward"),
+        dict(count=3, label="3Y", step="year", stepmode="backward"),
+        dict(count=5, label="5Y", step="year", stepmode="backward"),
+        dict(step="all", label="ALL"),
     ]
     fig.update_layout(
         title=title, height=650,
-        xaxis=dict(rangeselector=dict(buttons=range_buttons), rangeslider=dict(visible=False)),
+        xaxis=dict(
+            rangeselector=dict(
+                buttons=range_buttons, active=1,
+                font=dict(size=12),
+                bgcolor="#f2f4f7",
+                activecolor="#d7e6f7",
+                bordercolor="#9aa4b2",
+                borderwidth=1
+            ),
+            rangeslider=dict(visible=False)
+        ),
         dragmode=False,
-        uirevision=f"{title}-reset-{reset_revision}",
-        legend_orientation="h", margin=dict(l=15,r=15,t=55,b=15)
+        uirevision=f"{title}-default-one-year",
+        legend_orientation="h", margin=dict(l=15,r=15,t=75,b=15)
     )
-    # Start with a readable one-year view; the range controls expose all
-    # candles from the selected 5y/10y/max history.
+    # Keep the default chart on one year. The in-chart 1Y / RESET control
+    # restores this view directly without triggering a Streamlit rerun.
     if len(d.index):
-        fig.update_xaxes(range=[d.index[-1] - pd.DateOffset(years=1), d.index[-1]], row=1, col=1)
+        one_year_range = [d.index[-1] - pd.DateOffset(years=1), d.index[-1]]
+        fig.update_layout(xaxis_range=one_year_range, xaxis2_range=one_year_range)
     return fig
 
 with st.sidebar:
@@ -690,19 +701,14 @@ if st.session_state.get("analysis_requested", False):
             st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
         st.subheader("Daily chart")
-        if "daily_chart_reset_revision" not in st.session_state:
-            st.session_state.daily_chart_reset_revision = 0
-        if st.button("↺ Reset chart view", key="reset_daily_chart_view", help="Restore the default one-year view and original chart scales."):
-            st.session_state.daily_chart_reset_revision += 1
-        st.caption("If the chart view gets disturbed, tap Reset chart view. Use the range buttons to switch between 6m, 1y, 3y, 5y and All.")
+        st.caption("Default view: 1 year. To restore it, tap the chart's 1Y / RESET control above the plot. Use 6M, 3Y, 5Y or ALL to change the visible history. Chart zoom and pan are disabled to reduce accidental movement on touchscreens.")
         st.plotly_chart(
             make_chart(
                 daily,
-                f"{symbol} — Daily candles and moving averages",
-                reset_revision=st.session_state.daily_chart_reset_revision
+                f"{symbol} — Daily candles and moving averages"
             ),
             use_container_width=True,
-            config={"scrollZoom": False, "displayModeBar": False, "doubleClick": False}
+            config={"scrollZoom": False, "displayModeBar": False, "doubleClick": False, "staticPlot": False}
         )
         st.subheader("Momentum dashboard")
         mom = daily.tail(250)
