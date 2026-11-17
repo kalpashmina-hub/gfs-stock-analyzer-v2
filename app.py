@@ -630,13 +630,12 @@ if run:
         for level_title, level_df, swing_window, swing_lookback in level_specs:
             st.markdown(f"**{level_title}**")
             timeframe_close = float(level_df.Close.iloc[-1])
-            # Classify a swing as support/resistance against its own timeframe
-            # close. Using the latest daily close here can mislabel a monthly
-            # swing above the monthly close as "support" merely because the
-            # daily price has already recovered above it.
-            supports, resistances = pivots(level_df, window=swing_window, lookback=swing_lookback, reference_price=timeframe_close)
-            # Keep the common daily-close distance for cross-timeframe comparison,
-            # but retain the timeframe-based support/resistance classification.
+            # Swing points are sourced from this timeframe, but their current
+            # support/resistance role is classified against the latest daily
+            # close so every table answers the same practical question:
+            # which confirmed levels are below/above the price being assessed?
+            # The completed timeframe close remains visible as structural context.
+            supports, resistances = pivots(level_df, window=swing_window, lookback=swing_lookback, reference_price=latest_daily_close)
             nearby_supports, major_supports = split_nearby_levels(supports, latest_daily_close)
             nearby_resistances, major_resistances = split_nearby_levels(resistances, latest_daily_close)
             nearest_support = supports[0] if supports else None
@@ -660,7 +659,7 @@ if run:
                         "Distance from daily close": f"{distance_from_daily:+.1f}%"
                     })
                 return rows
-            st.caption(f"Reference: latest daily close ₹{latest_daily_close:,.2f} (timeframe close: ₹{timeframe_close:,.2f}). Nearby band: within 10% of the daily close.")
+            st.caption(f"Swing source: {level_title.split(" — ")[0]} | Current-price reference: ₹{latest_daily_close:,.2f} | Last completed timeframe close: ₹{timeframe_close:,.2f}. Support/resistance roles are classified against the current daily price; swing dates and timeframe close provide structural context. Nearby band: within 10% of the daily close.")
             st.caption("Nearby confirmed support — potential trading reference")
             support_table = pd.DataFrame(level_rows(nearby_supports, "Support"))
             if support_table.empty:
@@ -688,7 +687,7 @@ if run:
 
         st.markdown("**Nearest support / resistance — quick comparison**")
         st.dataframe(pd.DataFrame(nearest_level_rows), use_container_width=True, hide_index=True)
-        st.caption("This compact comparison highlights the closest confirmed swing below and above the latest daily close in each timeframe. It is a navigation aid; consult the detailed tables for swing dates and historical context.")
+        st.caption("Each row uses confirmed swing points from that timeframe, classified as support below or resistance above the latest daily close. The monthly/weekly/daily swing source gives structural context; this is not the same as the timeframe trend score. Consult the detailed tables for swing dates and distances.")
 
         st.markdown("**Daily Fibonacci retracement**")
         fib, fib_name, fib_status = fib_levels(daily, current_price=latest_daily_close)
