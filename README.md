@@ -12,7 +12,9 @@ A Streamlit application implementing the user's Grandfather–Father–Son frame
 - Independent calculation of EMA 10/20/50, SMA 50/200, RSI 14, RSI 9-period average, MACD histogram and 20-session volume average.
 - Weighted GFS checklist score out of 100 and a transparent state classification for each timeframe.
 - Daily candlestick chart, RSI and MACD panels.
-- Mechanical local-pivot support/resistance and 120-session Fibonacci retracement estimates.
+- Confirmed multi-timeframe swing-pivot support/resistance and volatility-filtered daily Fibonacci retracement estimates.
+- Separate provisional current-month recovery diagnostics (excluded from the confirmed GFS score).
+- Data-freshness warnings and transparent score/checklist diagnostics.
 - Provider-supplied fundamental snapshot when Yahoo returns those fields.
 - Downloadable daily-indicator and GFS-summary CSVs.
 
@@ -60,7 +62,8 @@ The labels (Strong Buy Candidate, Buy on Confirmation, Watchlist, Avoid Fresh En
 
 ## Known limitations in V2
 
-- Yahoo fundamentals can be missing, stale or defined differently by the provider.
+- Yahoo fundamentals can be missing, stale or defined differently by the provider; debt/equity units and unusually large growth figures require filing-level verification.
+- EOD data freshness is checked using calendar-day age; holidays and provider delays can still require manual judgment.
 - Support/resistance pivots and Fibonacci levels are mechanical estimates; validate swing anchors visually.
 - No live feed, broker integration, automated alerts, backtesting or trade execution.
 - No guarantee of data availability or investment outcome.
