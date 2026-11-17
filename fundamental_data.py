@@ -148,3 +148,44 @@ def latest_filing_status(data: pd.DataFrame) -> pd.DataFrame:
         Sources=("source_name", lambda x: ", ".join(sorted(set(map(str, x))))),
     ).reset_index()
     return out
+
+def period_growth_table(data: pd.DataFrame) -> pd.DataFrame:
+    """Calculate like-for-like quarter growth only for matching metric/unit/basis rows."""
+    if data.empty:
+        return pd.DataFrame()
+    eligible = {
+        "revenue_from_operations", "profit_before_tax",
+        "profit_after_tax_before_non_controlling_interests",
+        "net_profit_attributable_to_owners",
+        "net_cash_from_operating_activities", "free_cash_flow",
+    }
+    d = data[data["metric"].isin(eligible)].copy()
+    if d.empty:
+        return pd.DataFrame()
+    # Do not calculate growth when multiple filings compete for the same observation.
+    keys = ["metric", "period_end", "basis", "unit"]
+    d = d.drop_duplicates(keys, keep=False)
+    rows = []
+    for (metric, basis, unit), group in d.groupby(["metric", "basis", "unit"]):
+        values = {pd.Timestamp(r.period_end).strftime("%Y-%m-%d"): float(r.value)
+                  for r in group.itertuples()}
+        periods = sorted(values)
+        for current in periods:
+            current_date = pd.Timestamp(current)
+            comparisons = [
+                ("YoY", (current_date - pd.DateOffset(years=1)).strftime("%Y-%m-%d")),
+                ("QoQ", (current_date - pd.DateOffset(months=3)).strftime("%Y-%m-%d")),
+            ]
+            for label, prior in comparisons:
+                if prior in values and values[prior] != 0:
+                    rows.append({
+                        "Metric": metric,
+                        "Current period": current_date.strftime("%d %b %Y"),
+                        "Comparison": label,
+                        "Prior period": pd.Timestamp(prior).strftime("%d %b %Y"),
+                        "Basis": basis,
+                        "Unit": unit,
+                        "Growth (%)": round((values[current] / values[prior] - 1) * 100, 2),
+                    })
+    return pd.DataFrame(rows)
+
