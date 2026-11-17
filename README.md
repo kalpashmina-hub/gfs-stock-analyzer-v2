@@ -86,3 +86,16 @@ NSE filing pages:
 - XBRL filing information and taxonomy: https://www.nseindia.com/static/companies-listing/xbrl-information
 
 Current limitation: this beta uses a user-supplied normalized CSV. It does not automatically download or scrape exchange filings. Automatic ingestion will be added only after stable access, file formats, source terms and revision handling are verified. No fundamental score is calculated from unverified or incomplete data.
+
+
+### TCS Q2 FY27 pilot dataset — interpretation note
+
+The prepared pilot CSV is a primary-source extract, not a complete fundamental model. It keeps separate measures for:
+- `net_profit_for_period`: consolidated profit for the period before attribution between owners and non-controlling interests.
+- `net_profit_attributable_to_owners`: profit attributable to equity owners of the parent.
+
+These are not interchangeable. For Q2 FY27 the reported consolidated values are ₹13,934 crore and ₹13,884 crore respectively. For Q1 FY27 comparative values they are ₹13,420 crore and ₹13,349 crore respectively. The CSV uses the quarter-end dates and the audited filing date, not a generic provider quarter-reference date.
+
+The pilot currently contains primary NSE filing rows only. Secondary-source rows were removed because matching numbers copied into a secondary-source row would create a misleading appearance of independent corroboration. A genuine secondary cross-check must be independently retrieved, with its own source record, and must match metric definition, period, basis and unit before comparison.
+
+Source reference: TCS audited consolidated interim financial results for the quarter and six months ended 30 September 2026, approved 8 October 2026. See the NSE Integrated Filing record and the company's investor-relations results. No fundamental score is produced from this pilot.
