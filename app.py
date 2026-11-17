@@ -749,7 +749,7 @@ if run:
             fund_rows=[]
             market_cap = info.get("marketCap")
             if market_cap is not None:
-                fund_rows.append({"Metric":"Market cap", "Provider value":format_market_cap_inr(market_cap)})
+                fund_rows.append({"Metric":"Market cap", "Provider value":format_market_cap_inr(market_cap), "Data-quality note":""})
             for label,key,kind in fields:
                 value=info.get(key)
                 if value is not None:
@@ -758,16 +758,17 @@ if run:
                         numeric_value = pd.to_numeric(value, errors="coerce")
                         value = f"{numeric_value*100:.2f}%" if pd.notna(numeric_value) else "Unavailable / invalid"
                         if key in ("revenueGrowth", "earningsGrowth") and pd.notna(numeric_value) and abs(numeric_value) >= 1:
-                            note = "Unusually large growth figure — verify reporting period, base effect and company filing"
+                            note = "Verify period / base effect"
                     elif kind=="ratio": value=f"{value:,.2f}x"
                     elif kind=="provider_ratio":
                         raw_ratio = float(value)
-                        conditional_equivalent = f" (≈{raw_ratio/100:.2f}x if Yahoo field is percentage-scaled)" if abs(raw_ratio) >= 10 else ""
-                        value = f"{raw_ratio:,.2f} raw{conditional_equivalent}"
+                        value = f"{raw_ratio:,.2f} raw"
+                        note = "Unit needs filing verification"
                     elif kind=="rupees": value=f"₹{value:,.2f}"
                     fund_rows.append({"Metric":label,"Provider value":value,"Data-quality note":note})
             if fund_rows:
-                st.dataframe(pd.DataFrame(fund_rows), use_container_width=True, hide_index=True)
+                fund_table = pd.DataFrame(fund_rows).fillna("")
+                st.dataframe(fund_table, use_container_width=True, hide_index=True)
             else:
                 st.info("No fundamental fields returned by the provider.")
         else:
