@@ -426,7 +426,14 @@ with st.sidebar:
     st.divider()
     st.caption("EOD analysis only. No live prices, trade execution or guaranteed signals.")
 
+# Keep the selected analysis visible across Streamlit reruns (for example,
+# when the chart reset button is pressed). The analysis is refreshed only
+# when the user presses Run GFS analysis or interacts with a rerun-triggering
+# control while an analysis is already active.
 if run:
+    st.session_state.analysis_requested = True
+
+if st.session_state.get("analysis_requested", False):
     try:
         with st.spinner("Loading EOD history and calculating indicators…"):
             info = {}
