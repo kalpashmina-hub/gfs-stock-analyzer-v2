@@ -723,27 +723,31 @@ if run:
             nearby_resistances, major_resistances = split_nearby_levels(resistances, latest_daily_close)
             nearest_support = supports[0] if supports else None
             nearest_resistance = resistances[0] if resistances else None
+            def compact_level(point):
+                if not point:
+                    return "Not found"
+                distance = (float(point["price"]) / latest_daily_close - 1) * 100
+                evidence = point.get("cluster_count", 1)
+                evidence_label = "Repeated" if evidence >= 2 else "Single"
+                return f"₹{float(point['price']):,.2f} ({distance:+.1f}%) · {evidence_label} ×{evidence}"
+
             nearest_level_rows.append({
                 "Timeframe": level_title.split(" — ")[0],
-                "Nearest support (₹)": fmt(nearest_support["price"]) if nearest_support else "Not found",
-                "Support distance": f"{(nearest_support['price'] / latest_daily_close - 1) * 100:+.1f}%" if nearest_support else "—",
-                "Support context": nearest_support.get("level_context", "—") if nearest_support else "—",
-                "Nearest resistance (₹)": fmt(nearest_resistance["price"]) if nearest_resistance else "Not found",
-                "Resistance distance": f"{(nearest_resistance['price'] / latest_daily_close - 1) * 100:+.1f}%" if nearest_resistance else "—",
-                "Resistance context": nearest_resistance.get("level_context", "—") if nearest_resistance else "—",
+                "Nearest support": compact_level(nearest_support),
+                "Nearest resistance": compact_level(nearest_resistance),
             })
             def level_rows(points, prefix):
                 rows = []
                 for i, point in enumerate(points):
                     level_price = float(point["price"])
                     distance_from_daily = (level_price / latest_daily_close - 1) * 100
+                    evidence = point.get("cluster_count", 1)
+                    evidence_label = "Repeated" if evidence >= 2 else "Single"
                     rows.append({
                         "Level": f"{prefix} {i+1}",
                         "Swing date": pd.Timestamp(point["date"]).strftime("%d %b %Y"),
-                        "Price (₹)": fmt(level_price),
-                        "Distance from daily close": f"{distance_from_daily:+.1f}%",
-                        "Nearby confirmed swings (±1.5%)": point.get("cluster_count", 1),
-                        "Level context": point.get("level_context", "Single confirmed swing")
+                        "Price / distance": f"₹{level_price:,.2f} ({distance_from_daily:+.1f}%)",
+                        "Swing evidence": f"{evidence_label} · {evidence} pivot(s) within ±1.5%"
                     })
                 return rows
             st.caption(f"Swing source: {level_title.split(" — ")[0]} | Current-price reference: ₹{latest_daily_close:,.2f} | Last completed timeframe close: ₹{timeframe_close:,.2f}. Support/resistance roles are classified against the current daily price; swing dates and timeframe close provide structural context. Nearby band: within 10% of the daily close.")
@@ -774,7 +778,7 @@ if run:
 
         st.markdown("**Nearest support / resistance — quick comparison**")
         st.dataframe(pd.DataFrame(nearest_level_rows), use_container_width=True, hide_index=True)
-        st.caption("Each row uses confirmed swing points from that timeframe, classified against the latest daily close. Repeated swing area means multiple confirmed same-type pivots fall within 1.5% of the reference price; it is a historical clustering measure, not a tested bounce count or guarantee. A single swing remains a valid reference but has less repeated-pivot evidence. Monthly/weekly levels provide structural context; daily levels are more relevant to immediate planning.")
+        st.caption("Each row uses confirmed swing points from that timeframe, classified against the latest daily close. Repeated ×2 or more means multiple confirmed same-type pivots fall within 1.5% of the reference price; it is a historical clustering measure, not a tested bounce count or guarantee. A single pivot is still a valid reference. Monthly/weekly levels provide structural context; daily levels are more relevant to immediate planning.")
 
         st.markdown("**Daily Fibonacci retracement**")
         fib, fib_name, fib_status = fib_levels(daily, current_price=latest_daily_close)
