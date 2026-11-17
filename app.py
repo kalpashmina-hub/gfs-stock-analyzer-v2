@@ -49,6 +49,26 @@ def clean_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
         d[c] = pd.to_numeric(d[c], errors="coerce")
     d = d.dropna(subset=["Open", "High", "Low", "Close"])
     d = d[d["Close"] > 0]
+
+    # Reject impossible OHLC bars instead of silently calculating indicators
+    # from corrupted prices. Missing volume is allowed, but negative volume is not.
+    invalid_ohlc = (
+        (d["High"] < d[["Open", "Close", "Low"]].max(axis=1))
+        | (d["Low"] > d[["Open", "Close", "High"]].min(axis=1))
+        | (d[["Open", "High", "Low", "Close"]] <= 0).any(axis=1)
+    )
+    if invalid_ohlc.any():
+        examples = ", ".join(pd.Timestamp(x).strftime("%d %b %Y") for x in d.index[invalid_ohlc][:3])
+        raise ValueError(
+            f"{int(invalid_ohlc.sum())} OHLC row(s) contain impossible prices "
+            f"(for example: {examples}). Correct the source data before analysis."
+        )
+    invalid_volume = d["Volume"].notna() & (d["Volume"] < 0)
+    if invalid_volume.any():
+        raise ValueError(
+            f"{int(invalid_volume.sum())} row(s) contain negative volume. "
+            "Correct the source data before analysis."
+        )
     return d[REQUIRED]
 
 
@@ -80,7 +100,13 @@ def indicators(df: pd.DataFrame) -> pd.DataFrame:
 def resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
     """Resample daily OHLCV data. Labels represent period-end dates."""
     return df.resample(rule).agg(
-        {"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"}
+        {
+            "Open": "first",
+            "High": "max",
+            "Low": "min",
+            "Close": "last",
+            "Volume": lambda values: values.sum(min_count=1),
+        }
     ).dropna(subset=["Open", "High", "Low", "Close"])
 
 
