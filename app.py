@@ -7,7 +7,7 @@ import pandas as pd
 import streamlit as st
 import yfinance as yf
 import plotly.graph_objects as go
-from fundamental_data import validate_fundamental_upload, compare_sources, latest_filing_status
+from fundamental_data import validate_fundamental_upload, compare_sources, latest_filing_status, period_growth_table
 from plotly.subplots import make_subplots
 
 st.set_page_config(page_title="GFS Stock Analyzer V2", page_icon="📈", layout="wide")
@@ -975,11 +975,16 @@ if st.session_state.get("analysis_requested", False):
                         st.markdown("**Filing coverage**")
                         st.dataframe(status_table, use_container_width=True, hide_index=True)
                     st.markdown("**Source-level filing data**")
-                    st.caption("Source class is a label inferred from the supplied source name; it does not prove that a filing link was independently opened or that the value was audited.")
+                    st.caption("Source class is inferred from the supplied source name; it does not prove that a filing link was independently opened or that the value was audited.")
                     display_data = intake.data.copy()
                     for date_col in ("period_end", "filing_date"):
                         display_data[date_col] = display_data[date_col].dt.strftime("%d %b %Y")
                     st.dataframe(display_data, use_container_width=True, hide_index=True)
+                    growth = period_growth_table(intake.data)
+                    if not growth.empty:
+                        st.markdown("**Like-for-like growth from uploaded filing periods**")
+                        st.dataframe(growth, use_container_width=True, hide_index=True)
+                        st.caption("Growth is calculated only when metric, basis, unit and exact comparison period match. It is not annualised.")
                     disagreements = compare_sources(intake.data)
                     if not disagreements.empty:
                         st.markdown("**Cross-source differences requiring review**")
