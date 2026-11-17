@@ -774,9 +774,11 @@ if run:
         if info:
             fields = [
                 ("Trailing P/E", "trailingPE", "ratio"), ("Forward P/E", "forwardPE", "ratio"),
-                ("Price / book", "priceToBook", "ratio"),
+                ("Price / book", "priceToBook", "ratio"), ("EV / EBITDA", "enterpriseToEbitda", "ratio"),
                 ("Return on equity", "returnOnEquity", "percent"),
-                ("Debt / equity (provider-reported)", "debtToEquity", "provider_ratio"),
+                ("Debt / equity", "debtToEquity", "debt_equity_percent"),
+                ("Current ratio", "currentRatio", "ratio"), ("Quick ratio", "quickRatio", "ratio"),
+                ("Total debt (₹)", "totalDebt", "inr"), ("Total cash (₹)", "totalCash", "inr"),
                 ("Profit margin", "profitMargins", "percent"), ("Revenue growth", "revenueGrowth", "percent"),
                 ("Earnings growth", "earningsGrowth", "percent"), ("52-week high (₹)", "fiftyTwoWeekHigh", "rupees"),
                 ("52-week low (₹)", "fiftyTwoWeekLow", "rupees")]
@@ -787,18 +789,23 @@ if run:
             for label,key,kind in fields:
                 value=info.get(key)
                 if value is not None and pd.notna(pd.to_numeric(value, errors="coerce")):
+                    numeric_value = float(pd.to_numeric(value, errors="coerce"))
                     note = ""
                     if kind=="percent":
-                        numeric_value = pd.to_numeric(value, errors="coerce")
-                        value = f"{numeric_value*100:.2f}%" if pd.notna(numeric_value) else "Unavailable / invalid"
-                        if key in ("revenueGrowth", "earningsGrowth") and pd.notna(numeric_value) and abs(numeric_value) >= 1:
+                        value = f"{numeric_value*100:.2f}%"
+                        if key in ("revenueGrowth", "earningsGrowth") and abs(numeric_value) >= 1:
                             note = "Verify period / base effect"
-                    elif kind=="ratio": value=f"{value:,.2f}x"
-                    elif kind=="provider_ratio":
-                        raw_ratio = float(value)
-                        value = f"{raw_ratio:,.2f} raw"
-                        note = "Unit needs filing verification"
-                    elif kind=="rupees": value=f"₹{value:,.2f}"
+                    elif kind=="ratio":
+                        value=f"{numeric_value:,.2f}x"
+                    elif kind=="debt_equity_percent":
+                        # Yahoo's debtToEquity field is expressed as a percentage,
+                        # not as a plain ratio: 218.56 means 218.56% = 2.19x.
+                        value=f"{numeric_value/100:,.2f}x ({numeric_value:,.2f}%)"
+                        note = "Yahoo percentage convention; verify against latest balance sheet"
+                    elif kind=="inr":
+                        value=format_market_cap_inr(numeric_value)
+                    elif kind=="rupees":
+                        value=f"₹{numeric_value:,.2f}"
                     fund_rows.append({"Metric":label,"Provider value":value,"Data-quality note":note})
             if fund_rows:
                 fund_table = pd.DataFrame(fund_rows).fillna("")
@@ -807,7 +814,7 @@ if run:
                 st.info("No fundamental fields returned by the provider.")
         else:
             st.info("Fundamentals are not included for CSV uploads. Use company annual reports, quarterly results and exchange filings for verification.")
-        st.caption("Fundamental data is provider-reported and may be missing or stale. Growth figures of 100% or more in either direction are flagged for manual verification because reporting periods, low-base effects and exceptional items can distort comparisons. Debt/equity is shown as a raw Yahoo field; the x-times equivalent is conditional because provider conventions and datasets can change. Verify the ratio and its definition against company filings. This snapshot is not a substitute for audited statements, quarterly results, shareholding and exchange announcements.")
+        st.caption("Fundamental data is provider-reported and may be missing or stale. Yahoo reports debt/equity as a percentage (for example, 218.56 means 218.56% or 2.19x); verify the figure and definition against the latest balance sheet. Growth figures of 100% or more in either direction are flagged for manual verification because reporting periods, low-base effects and exceptional items can distort comparisons. Total debt and cash are shown in Indian crore units when supplied. This snapshot is not a substitute for audited statements, quarterly results, shareholding and exchange announcements.")
 
         st.subheader("Export")
         csv = daily.to_csv(index_label="Date").encode("utf-8")
