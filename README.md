@@ -46,7 +46,7 @@ Date,Open,High,Low,Close,Volume
 2026-01-01,1500,1520,1490,1510,123456
 ```
 
-Use at least 220 daily sessions for the daily SMA 200. Prefer 3–5 years of daily data to make monthly and weekly indicators more meaningful. The app does not validate the licensing or correctness of an uploaded file; use data you are authorised to use.
+Use at least 220 daily sessions for the daily SMA 200. Prefer 3–5 years of daily data to make monthly and weekly indicators more meaningful. Timezone-aware timestamps are converted to India time; timezone-naive dates are assumed to be Indian exchange dates. The app checks basic OHLC consistency but cannot verify the licensing, corporate-action adjustment or full correctness of an uploaded file; use data you are authorised to use.
 
 ## Data-source reliability
 
@@ -62,7 +62,7 @@ The labels (Strong Buy Candidate, Buy on Confirmation, Watchlist, Avoid Fresh En
 
 ## Known limitations in V2
 
-- Yahoo fundamentals can be missing, stale or defined differently by the provider; debt/equity units and unusually large growth figures require filing-level verification.
+- Yahoo fundamentals can be missing, stale or defined differently by the provider. The most-recent-quarter field is only a reference date; individual fields may use different periods. Verify debt/equity, growth, cash and debt against company filings.
 - EOD data freshness is checked using calendar-day age; holidays and provider delays can still require manual judgment.
 - Support/resistance pivots and Fibonacci levels are mechanical estimates; validate swing anchors visually.
 - No live feed, broker integration, automated alerts, backtesting or trade execution.
