@@ -63,11 +63,16 @@ def validate_fundamental_upload(raw: pd.DataFrame) -> FundamentalIntake:
         errors.append("Every value must include its source name and source URL.")
 
     # A metric/period/basis tuple must not silently contain duplicate competing values.
-    duplicates = df.duplicated(["metric", "period_end", "basis"], keep=False)
-    if duplicates.any():
+    duplicate_groups = df.groupby(["metric", "period_end", "basis", "unit"], dropna=False)
+    conflicting_duplicates = any(
+        group["value"].dropna().nunique() > 1
+        for _, group in duplicate_groups
+        if len(group) > 1
+    )
+    if conflicting_duplicates:
         warnings.append(
-            "Duplicate metric/period/basis rows found. Resolve original versus revised "
-            "filings before using these values."
+            "Different values exist for the same metric, period, basis and unit. "
+            "Review original/revised filings and source definitions before using them."
         )
     non_primary = ~df["source_name"].str.lower().apply(
         lambda x: any(hint in x for hint in PRIMARY_SOURCE_HINTS)
