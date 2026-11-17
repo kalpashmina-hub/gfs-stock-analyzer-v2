@@ -153,10 +153,10 @@ def period_growth_table(data: pd.DataFrame) -> pd.DataFrame:
     """Calculate like-for-like quarter growth only for matching metric/unit/basis rows."""
     if data.empty:
         return pd.DataFrame()
+    # Profit growth is intentionally withheld until exceptional-item and
+    # Ind AS / IFRS comparability is explicitly reconciled for each quarter.
     eligible = {
-        "revenue_from_operations", "profit_before_tax",
-        "profit_after_tax_before_non_controlling_interests",
-        "net_profit_attributable_to_owners",
+        "revenue_from_operations",
         "net_cash_from_operating_activities", "free_cash_flow",
     }
     d = data[data["metric"].isin(eligible)].copy()
