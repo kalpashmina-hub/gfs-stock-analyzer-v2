@@ -72,7 +72,8 @@ def indicators(df: pd.DataFrame) -> pd.DataFrame:
     d["MACD"] = e12 - e26
     d["MACD_SIGNAL"] = d.MACD.ewm(span=9, adjust=False).mean()
     d["MACD_HIST"] = d.MACD - d.MACD_SIGNAL
-    d["VOL_MA20"] = d.Volume.rolling(20, min_periods=10).mean()
+    # Compare each completed bar with the preceding 20 bars, excluding itself.
+    d["VOL_MA20"] = d.Volume.shift(1).rolling(20, min_periods=10).mean()
     return d
 
 
@@ -81,6 +82,23 @@ def resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
     return df.resample(rule).agg(
         {"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"}
     ).dropna(subset=["Open", "High", "Low", "Close"])
+
+
+def completed_daily_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
+    """Exclude today's still-forming daily bar until a conservative EOD buffer passes.
+
+    NSE cash-market close is 15:30 IST. We wait until 16:15 IST before
+    treating a same-day Yahoo/CSV bar as a completed EOD observation.
+    Historical bars and the developing current-month raw series are unchanged.
+    """
+    if df.empty:
+        return df.copy()
+    now = pd.Timestamp.now(tz="Asia/Kolkata")
+    today = now.tz_localize(None).normalize()
+    latest_date = pd.Timestamp(df.index.max()).normalize()
+    if latest_date == today and (now.hour, now.minute) < (16, 15):
+        return df.loc[df.index.normalize() < today].copy()
+    return df.copy()
 
 
 def completed_resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
@@ -403,12 +421,13 @@ if run:
                     st.stop()
                 raw = clean_ohlcv(pd.read_csv(uploaded))
                 source_label = f"User-uploaded CSV: {uploaded.name}"
-        if len(raw) < 220:
-            st.error(f"Only {len(raw)} daily rows are available. Please provide at least 220 trading sessions for the daily SMA200 and meaningful multi-timeframe analysis.")
+        analysis_raw = completed_daily_ohlcv(raw)
+        if len(analysis_raw) < 220:
+            st.error(f"Only {len(analysis_raw)} completed daily rows are available after excluding any still-forming session. Please provide at least 220 completed trading sessions for the daily SMA200 and meaningful multi-timeframe analysis.")
             st.stop()
-        daily = indicators(raw)
-        weekly = indicators(completed_resample_ohlcv(raw, "W-FRI"))
-        monthly = indicators(completed_resample_ohlcv(raw, "ME"))
+        daily = indicators(analysis_raw)
+        weekly = indicators(completed_resample_ohlcv(analysis_raw, "W-FRI"))
+        monthly = indicators(completed_resample_ohlcv(analysis_raw, "ME"))
         results = [evaluate(monthly, "Grandfather / Monthly", 35, fast_ema=10, slow_ema=20), evaluate(weekly, "Father / Weekly", 35), evaluate(daily, "Son / Daily", 30, True)]
         if any(x is None for x in results):
             st.error("Insufficient completed timeframe history or required indicator values. Check the selected history period and data source; the app will not convert missing indicator values into a zero score.")
@@ -416,7 +435,9 @@ if run:
         g, f, s = results
         total = round(sum(x["Weighted points"] for x in results))
         st.subheader(info.get("longName", symbol) + (f" ({yf_symbol})" if source.startswith("Yahoo") else ""))
-        st.caption(f"Source: {source_label}  |  Last available daily bar: {s['Date']}  |  {len(raw):,} daily sessions")
+        st.caption(f"Source: {source_label}  |  Last completed daily bar used for GFS: {s['Date']}  |  {len(analysis_raw):,} completed daily sessions")
+        if not analysis_raw.empty and pd.Timestamp(raw.index[-1]).normalize() > pd.Timestamp(analysis_raw.index[-1]).normalize():
+            st.info(f"Today's developing daily bar ({pd.Timestamp(raw.index[-1]).strftime('%d %b %Y')}) is excluded from confirmed daily indicators, scoring and volume until after 16:15 IST. It remains available for the provisional monthly panel.")
         latest_bar_date = pd.Timestamp(raw.index[-1]).normalize()
         today_for_freshness = pd.Timestamp.now(tz="Asia/Kolkata").tz_localize(None).normalize()
         data_age_days = (today_for_freshness - latest_bar_date).days
