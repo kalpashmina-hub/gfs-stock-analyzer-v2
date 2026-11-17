@@ -1006,11 +1006,16 @@ if st.session_state.get("analysis_requested", False):
                         st.markdown("**Filing coverage**")
                         st.dataframe(status_table, use_container_width=True, hide_index=True)
                     st.markdown("**Source-level filing data**")
-                    st.caption("Source class is inferred from the supplied source name; it does not prove that a filing link was independently opened or that the value was audited.")
+                    st.caption("Source classification diagnostic: each row is labelled from its source name and URL host. This is a provenance hint, not proof that the linked filing was independently opened or audited.")
                     display_data = intake.data.copy()
                     for date_col in ("period_end", "filing_date"):
                         display_data[date_col] = display_data[date_col].dt.strftime("%d %b %Y")
-                    st.dataframe(display_data, use_container_width=True, hide_index=True)
+                    preferred_columns = [
+                        "metric", "value", "period_end", "basis", "unit",
+                        "source_class", "source_name", "source_url", "filing_date",
+                    ]
+                    display_columns = [col for col in preferred_columns if col in display_data.columns]
+                    st.dataframe(display_data[display_columns], use_container_width=True, hide_index=True)
                     growth = period_growth_table(intake.data)
                     if not growth.empty:
                         st.markdown("**Like-for-like growth from uploaded filing periods**")
