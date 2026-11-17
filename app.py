@@ -386,7 +386,7 @@ def fib_levels(df: pd.DataFrame, current_price=None):
     return levels, label, status
 
 
-def make_chart(df, title):
+def make_chart(df, title, reset_revision=0):
     # Keep the full selected history available; use Plotly range controls to
     # navigate long histories without forcing thousands of candles into view.
     d = df.copy()
@@ -406,7 +406,7 @@ def make_chart(df, title):
         title=title, height=650,
         xaxis=dict(rangeselector=dict(buttons=range_buttons), rangeslider=dict(visible=False)),
         dragmode=False,
-        uirevision=f"{title}-stable",
+        uirevision=f"{title}-reset-{reset_revision}",
         legend_orientation="h", margin=dict(l=15,r=15,t=55,b=15)
     )
     # Start with a readable one-year view; the range controls expose all
@@ -683,8 +683,17 @@ if run:
             st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
         st.subheader("Daily chart")
+        if "daily_chart_reset_revision" not in st.session_state:
+            st.session_state.daily_chart_reset_revision = 0
+        if st.button("↺ Reset chart view", key="reset_daily_chart_view", help="Restore the default one-year view and original chart scales."):
+            st.session_state.daily_chart_reset_revision += 1
+        st.caption("If the chart view gets disturbed, tap Reset chart view. Use the range buttons to switch between 6m, 1y, 3y, 5y and All.")
         st.plotly_chart(
-            make_chart(daily, f"{symbol} — Daily candles and moving averages"),
+            make_chart(
+                daily,
+                f"{symbol} — Daily candles and moving averages",
+                reset_revision=st.session_state.daily_chart_reset_revision
+            ),
             use_container_width=True,
             config={"scrollZoom": False, "displayModeBar": False, "doubleClick": False}
         )
