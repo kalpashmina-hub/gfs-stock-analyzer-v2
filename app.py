@@ -430,6 +430,56 @@ if run:
                     ". Strong momentum can persist, so this does not reduce the GFS trend score; avoid chasing and assess pullbacks, price action and risk/reward before entry.")
         st.caption("Each timeframe score weights Trend 40%, Momentum 35% and Confirmation 25%. Related RSI/MACD checks are grouped so momentum signals do not dominate the underlying price trend. Monthly/weekly/daily composite weights remain 35/35/30. The 0–100 score is a checklist, not a probability of profit or a personalised recommendation; confirm fundamentals, liquidity, news, position sizing and reward/risk before acting.")
 
+        # Show the developing current-month candle separately from the confirmed
+        # Grandfather score. It is informational only and never enters GFS weights.
+        developing_monthly_raw = resample_ohlcv(raw, "ME")
+        today_local = pd.Timestamp.now(tz="Asia/Kolkata").tz_localize(None).normalize()
+        if (not developing_monthly_raw.empty
+                and developing_monthly_raw.index[-1].year == today_local.year
+                and developing_monthly_raw.index[-1].month == today_local.month
+                and developing_monthly_raw.index[-1].normalize() > today_local):
+            developing_monthly = indicators(developing_monthly_raw)
+            provisional = developing_monthly.iloc[-1]
+            previous_confirmed = monthly.iloc[-1]
+            provisional_fast = provisional.get("EMA10", np.nan)
+            provisional_slow = provisional.get("EMA20", np.nan)
+            provisional_rsi = provisional.get("RSI", np.nan)
+            provisional_rsi_ma = provisional.get("RSI_MA9", np.nan)
+            provisional_hist = provisional.get("MACD_HIST", np.nan)
+            previous_hist = previous_confirmed.get("MACD_HIST", np.nan)
+
+            def provisional_status(condition):
+                return "Yes" if condition else "No"
+
+            recovery_rows = [
+                {"Provisional monthly measure": "Current month-to-date close (₹)", "Reading": fmt(provisional.Close),
+                 "Interpretation": "Unfinished candle; changes until month-end"},
+                {"Provisional monthly measure": "Close above EMA10", "Reading": provisional_status(pd.notna(provisional_fast) and provisional.Close > provisional_fast),
+                 "Interpretation": f"EMA10: ₹{provisional_fast:,.2f}" if pd.notna(provisional_fast) else "EMA10 unavailable"},
+                {"Provisional monthly measure": "Close above EMA20", "Reading": provisional_status(pd.notna(provisional_slow) and provisional.Close > provisional_slow),
+                 "Interpretation": f"EMA20: ₹{provisional_slow:,.2f}" if pd.notna(provisional_slow) else "EMA20 unavailable"},
+                {"Provisional monthly measure": "EMA10 above EMA20", "Reading": provisional_status(pd.notna(provisional_fast) and pd.notna(provisional_slow) and provisional_fast > provisional_slow),
+                 "Interpretation": "Current partial-month EMA alignment"},
+                {"Provisional monthly measure": "RSI (14)", "Reading": fmt(provisional_rsi),
+                 "Interpretation": "Above 50" if pd.notna(provisional_rsi) and provisional_rsi > 50 else "Below / equal to 50" if pd.notna(provisional_rsi) else "Unavailable"},
+                {"Provisional monthly measure": "RSI above RSI MA9", "Reading": provisional_status(pd.notna(provisional_rsi) and pd.notna(provisional_rsi_ma) and provisional_rsi > provisional_rsi_ma),
+                 "Interpretation": f"RSI MA9: {fmt(provisional_rsi_ma)}"},
+                {"Provisional monthly measure": "MACD histogram", "Reading": fmt(provisional_hist, 4),
+                 "Interpretation": "Improving vs last completed month" if pd.notna(provisional_hist) and pd.notna(previous_hist) and provisional_hist > previous_hist else "Not improving vs last completed month" if pd.notna(provisional_hist) and pd.notna(previous_hist) else "Unavailable"},
+            ]
+            st.subheader("Provisional monthly recovery — not included in GFS score")
+            st.caption(f"Developing month: {today_local.strftime('%B %Y')} | Data through {raw.index[-1].strftime('%d %b %Y')}. These readings use the unfinished monthly candle and can change before month-end.")
+            st.dataframe(pd.DataFrame(recovery_rows), use_container_width=True, hide_index=True)
+            if (pd.notna(provisional.Close) and pd.notna(provisional_fast)
+                    and pd.notna(provisional_slow) and provisional.Close > provisional_fast > provisional_slow):
+                st.success("Provisional monthly price structure is improving: close is above EMA10 and EMA10 is above EMA20. Wait for month-end confirmation.")
+            elif pd.notna(provisional.Close) and pd.notna(provisional_fast) and provisional.Close > provisional_fast:
+                st.info("Provisional monthly close is above EMA10, but the full EMA10/EMA20 bullish structure is not yet confirmed.")
+            else:
+                st.warning("The developing monthly candle has not yet established a bullish close/EMA10 structure. Reassess as the month progresses.")
+            st.caption("The confirmed Grandfather score above continues to use completed monthly candles only. Provisional readings are context for a possible recovery, not a replacement score or a buy signal.")
+
+
         st.subheader("GFS score breakdown")
         score_rows = []
         for x in results:
