@@ -7,6 +7,7 @@ and records provenance so that unsupported or stale values are not silently scor
 from __future__ import annotations
 
 from dataclasses import dataclass
+from urllib.parse import urlparse
 import pandas as pd
 
 REQUIRED_COLUMNS = {
@@ -26,6 +27,16 @@ class FundamentalIntake:
 
 def _as_date(series: pd.Series) -> pd.Series:
     return pd.to_datetime(series, errors="coerce", dayfirst=True).dt.normalize()
+
+
+
+def classify_source(source_name: str) -> str:
+    name = str(source_name).strip().lower()
+    if "nse" in name or "bse" in name or "exchange" in name:
+        return "Primary — stock exchange filing"
+    if "company" in name or "tcs" in name or "annual report" in name or "investor relations" in name:
+        return "Primary — company disclosure"
+    return "Secondary — cross-check only"
 
 
 def validate_fundamental_upload(raw: pd.DataFrame) -> FundamentalIntake:
@@ -59,6 +70,13 @@ def validate_fundamental_upload(raw: pd.DataFrame) -> FundamentalIntake:
         errors.append("basis must be consolidated or standalone; do not mix them.")
     if df["source_name"].eq("").any() or df["source_url"].eq("").any():
         errors.append("Every value must include its source name and source URL.")
+    invalid_urls = df["source_url"].apply(
+        lambda value: urlparse(str(value)).scheme not in {"http", "https"}
+        or not bool(urlparse(str(value)).netloc)
+    )
+    if invalid_urls.any():
+        errors.append("Every source_url must be a complete HTTP or HTTPS link.")
+    df["source_class"] = df["source_name"].apply(classify_source)
 
     # A metric/period/basis tuple must not silently contain duplicate competing values.
     duplicate_groups = df.groupby(["metric", "period_end", "basis", "unit"], dropna=False)
@@ -114,7 +132,7 @@ def compare_sources(data: pd.DataFrame) -> pd.DataFrame:
             "Low": low,
             "High": high,
             "Difference (%)": round(spread_pct, 2),
-            "Review required": "Yes" if spread_pct > 1 else "No",
+            "Review required": "Yes" if spread_pct > 0.01 else "No",
         })
     return pd.DataFrame(rows)
 
