@@ -919,13 +919,16 @@ if st.session_state.get("analysis_requested", False):
                         note = "Yahoo percentage convention; verify against latest balance sheet and reporting basis"
                     elif kind=="inr":
                         value=format_provider_amount(numeric_value, financial_currency)
-                        note = "Provider-reported amount; debt and cash are not directly comparable to company net-cash measure without matching definitions, dates and restricted-cash treatment"
+                        note = "Provider-reported amount; verify currency, reporting date and definition. Do not infer net cash by subtracting debt and cash."
+                        if str(financial_currency or "").upper() != "INR":
+                            note = "Currency not confirmed as INR; amount shown in provider currency. Verify reporting date and definition."
                     elif kind=="rupees":
                         value=f"₹{numeric_value:,.2f}"
                     fund_rows.append({"Metric":label,"Provider value":value,"Data-quality note":note})
             if fund_rows:
                 fund_table = pd.DataFrame(fund_rows).fillna("")
                 st.dataframe(fund_table, use_container_width=True, hide_index=True)
+                st.caption(f"Currency metadata — quote: {quote_currency or 'not supplied'}; financial statements: {financial_currency or 'not supplied'}. Growth percentages are provider-reported and their exact comparison periods/bases are not exposed here. Large growth readings (100% or more in magnitude) require checking the underlying company filings, including for low-base effects and exceptional items. Debt and cash are separate provider-reported balances; do not subtract them to infer net cash without reconciling dates, definitions, restricted cash, leases and investments.")
             else:
                 st.info("No fundamental fields returned by the provider.")
         else:
