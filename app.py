@@ -984,7 +984,7 @@ if st.session_state.get("analysis_requested", False):
                     if not growth.empty:
                         st.markdown("**Like-for-like growth from uploaded filing periods**")
                         st.dataframe(growth, use_container_width=True, hide_index=True)
-                        st.caption("Growth is calculated only when metric, basis, unit and exact comparison period match. It is not annualised.")
+                        st.caption("Growth is calculated only when metric, basis, unit and exact comparison period match. It is not annualised. Profit growth is withheld pending exceptional-item and Ind AS / IFRS comparability review.")
                     disagreements = compare_sources(intake.data)
                     if not disagreements.empty:
                         st.markdown("**Cross-source differences requiring review**")
