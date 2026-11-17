@@ -109,10 +109,23 @@ def completed_resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
 
 
 def evaluate(df: pd.DataFrame, label: str, weight: int, is_daily=False, fast_ema=20, slow_ema=50):
-    if len(df) < 60:
+    # Monthly EMA10/20 needs fewer bars than the weekly/daily EMA20/50
+    # framework. Validate actual indicator availability instead of using an
+    # unnecessarily high 60-bar minimum for every timeframe.
+    minimum_bars = 30 if (fast_ema, slow_ema) == (10, 20) else 60
+    if len(df) < minimum_bars:
         return None
     r = df.iloc[-1]
     prev = df.iloc[-2]
+    required_values = [
+        r.Close, r.get(f"EMA{fast_ema}"), r.get(f"EMA{slow_ema}"),
+        r.RSI, r.RSI_MA9, r.MACD_HIST, prev.MACD_HIST,
+    ]
+    if is_daily:
+        required_values.append(r.get("SMA200"))
+    if any(pd.isna(value) for value in required_values):
+        return None
+
     close_check = f"Close above EMA{fast_ema}"
     ema_stack_check = f"EMA{fast_ema} above EMA{slow_ema}"
     checks = {
@@ -398,7 +411,7 @@ if run:
         monthly = indicators(completed_resample_ohlcv(raw, "ME"))
         results = [evaluate(monthly, "Grandfather / Monthly", 35, fast_ema=10, slow_ema=20), evaluate(weekly, "Father / Weekly", 35), evaluate(daily, "Son / Daily", 30, True)]
         if any(x is None for x in results):
-            st.error("Insufficient history after resampling. Upload a longer price history.")
+            st.error("Insufficient completed timeframe history or required indicator values. Check the selected history period and data source; the app will not convert missing indicator values into a zero score.")
             st.stop()
         g, f, s = results
         total = round(sum(x["Weighted points"] for x in results))
