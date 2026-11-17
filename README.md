@@ -99,3 +99,12 @@ These are not interchangeable. For Q2 FY27 the reported consolidated values are 
 The pilot currently contains primary NSE filing rows only. Secondary-source rows were removed because matching numbers copied into a secondary-source row would create a misleading appearance of independent corroboration. A genuine secondary cross-check must be independently retrieved, with its own source record, and must match metric definition, period, basis and unit before comparison.
 
 Source reference: TCS audited consolidated interim financial results for the quarter and six months ended 30 September 2026, approved 8 October 2026. See the NSE Integrated Filing record and the company's investor-relations results. No fundamental score is produced from this pilot.
+
+
+### TCS pilot extension: cash flow and balance-sheet coverage
+
+The TCS Q2 FY27 pilot now includes quarterly operating cash flow, capital expenditure, free cash flow, operating-cash-flow conversion ratios, reported operating/net margins, and selected IFRS consolidated balance-sheet measures. Cash-flow values are quarter-specific; balance-sheet values are point-in-time at 30 September 2026. Units and accounting presentation are recorded per row, so Ind AS and IFRS values are not mixed in a single comparison.
+
+The app also calculates like-for-like revenue and cash-flow growth only when the same metric, period basis, unit and exact comparison quarter exist. It deliberately withholds automated profit-growth calculations until exceptional-item treatment and Ind AS/IFRS comparability have been reconciled. A source label is metadata, not proof of independent verification. Secondary-source matching values are not added unless independently retrieved and checked.
+
+No fundamental score is produced yet. The pilot remains a data-quality and reconciliation exercise; the original Yahoo snapshot is not overwritten.
