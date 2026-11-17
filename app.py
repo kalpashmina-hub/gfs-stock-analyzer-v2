@@ -893,14 +893,19 @@ if st.session_state.get("analysis_requested", False):
                 ("Current ratio", "currentRatio", "ratio"), ("Quick ratio", "quickRatio", "ratio"),
                 ("Total debt", "totalDebt", "inr"), ("Total cash", "totalCash", "inr"),
                 ("Profit margin", "profitMargins", "percent"), ("Revenue growth (provider period)", "revenueGrowth", "percent"),
-                ("Earnings growth (provider period)", "earningsGrowth", "percent"), ("52-week high (₹)", "fiftyTwoWeekHigh", "rupees"),
-                ("52-week low (₹)", "fiftyTwoWeekLow", "rupees")]
+                ("Earnings growth (provider period)", "earningsGrowth", "percent"), ("52-week high (quote currency)", "fiftyTwoWeekHigh", "quote_price"),
+                ("52-week low (quote currency)", "fiftyTwoWeekLow", "quote_price")]
             fund_rows=[]
             quote_currency = info.get("currency")
             financial_currency = info.get("financialCurrency") or quote_currency
+            most_recent_quarter = info.get("mostRecentQuarter")
+            if most_recent_quarter is not None:
+                quarter_date = pd.to_datetime(most_recent_quarter, unit="s", errors="coerce")
+                if pd.notna(quarter_date):
+                    fund_rows.append({"Metric":"Provider most recent quarter", "Provider value":quarter_date.strftime("%d %b %Y"), "Data-quality note":"Reference date only; individual fields may use different periods"})
             market_cap = info.get("marketCap")
             if market_cap is not None:
-                cap_note = "" if str(quote_currency or "").upper() == "INR" else "Currency not confirmed as INR; amount shown in provider currency"
+                cap_note = "" if str(quote_currency or "").upper() == "INR" else "Quote currency not confirmed as INR"
                 fund_rows.append({"Metric":"Market cap", "Provider value":format_provider_amount(market_cap, quote_currency), "Data-quality note":cap_note})
             for label,key,kind in fields:
                 value=info.get(key)
@@ -909,27 +914,27 @@ if st.session_state.get("analysis_requested", False):
                     note = ""
                     if kind=="percent":
                         value = f"{numeric_value*100:.2f}%"
-                        if key in ("revenueGrowth", "earningsGrowth") and abs(numeric_value) >= 1:
-                            note = "Provider period/basis not exposed; verify filings and low-base effects"
+                        if key in ("revenueGrowth", "earningsGrowth"):
+                            note = "Comparison period/basis not shown; verify filings"
                     elif kind=="ratio":
                         value=f"{numeric_value:,.2f}x"
                     elif kind=="debt_equity_percent":
                         # Yahoo's debtToEquity field is expressed as a percentage,
                         # not as a plain ratio: 218.56 means 218.56% = 2.19x.
                         value=f"{numeric_value/100:,.2f}x ({numeric_value:,.2f}%)"
-                        note = "Yahoo percentage convention; verify against latest balance sheet and reporting basis"
+                        note = "Provider convention; verify latest balance sheet"
                     elif kind=="inr":
                         value=format_provider_amount(numeric_value, financial_currency)
-                        note = "Provider-reported amount; verify currency, reporting date and definition. Do not infer net cash by subtracting debt and cash."
+                        note = "Period/definition not shown; verify filings"
                         if str(financial_currency or "").upper() != "INR":
-                            note = "Currency not confirmed as INR; amount shown in provider currency. Verify reporting date and definition."
-                    elif kind=="rupees":
-                        value=f"₹{numeric_value:,.2f}"
+                            note = "Currency not confirmed as INR; verify filings"
+                    elif kind=="quote_price":
+                        value = f"₹{numeric_value:,.2f}" if str(quote_currency or "").upper() == "INR" else f"{numeric_value:,.2f} {str(quote_currency or 'currency not supplied').upper()}"
                     fund_rows.append({"Metric":label,"Provider value":value,"Data-quality note":note})
             if fund_rows:
                 fund_table = pd.DataFrame(fund_rows).fillna("")
                 st.dataframe(fund_table, use_container_width=True, hide_index=True)
-                st.caption(f"Currency metadata — quote: {quote_currency or 'not supplied'}; financial statements: {financial_currency or 'not supplied'}. Growth percentages are provider-reported and their exact comparison periods/bases are not exposed here. Large growth readings (100% or more in magnitude) require checking the underlying company filings, including for low-base effects and exceptional items. Debt and cash are separate provider-reported balances; do not subtract them to infer net cash without reconciling dates, definitions, restricted cash, leases and investments.")
+                st.caption(f"Currency metadata — quote: {quote_currency or 'not supplied'}; financial statements: {financial_currency or 'not supplied'}. The provider's most recent quarter is a reference date, not a guarantee that every field uses that period. Growth periods/bases are not exposed consistently; verify filings, especially unusually large growth. Debt and cash are separate provider-reported balances; do not subtract them to infer net cash without reconciling dates, definitions, restricted cash, leases and investments.")
             else:
                 st.info("No fundamental fields returned by the provider.")
         else:
