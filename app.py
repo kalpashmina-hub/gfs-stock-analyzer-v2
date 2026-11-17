@@ -7,12 +7,43 @@ import pandas as pd
 import streamlit as st
 import yfinance as yf
 import plotly.graph_objects as go
-from fundamental_data import validate_fundamental_upload, compare_sources, latest_filing_status, period_growth_table
+from fundamental_data import validate_fundamental_upload, compare_sources, latest_filing_status
 from plotly.subplots import make_subplots
 
 st.set_page_config(page_title="GFS Stock Analyzer V2", page_icon="📈", layout="wide")
 st.title("📈 GFS Stock Analyzer — Version 2")
 st.caption("Grandfather: Monthly  |  Father: Weekly  |  Son: Daily  •  EOD decision-support system")
+
+def period_growth_table(data: pd.DataFrame) -> pd.DataFrame:
+    """Calculate conservative like-for-like growth for revenue and cash flow."""
+    if data.empty:
+        return pd.DataFrame()
+    eligible = {"revenue_from_operations", "net_cash_from_operating_activities", "free_cash_flow"}
+    d = data[data["metric"].isin(eligible)].copy()
+    if d.empty:
+        return pd.DataFrame()
+    keys = ["metric", "period_end", "basis", "unit"]
+    d = d.drop_duplicates(keys, keep=False)
+    rows = []
+    for (metric, basis, unit), group in d.groupby(["metric", "basis", "unit"]):
+        values = {pd.Timestamp(r.period_end).strftime("%Y-%m-%d"): float(r.value)
+                  for r in group.itertuples()}
+        for current in sorted(values):
+            date = pd.Timestamp(current)
+            for label, prior in (
+                ("YoY", (date - pd.DateOffset(years=1)).strftime("%Y-%m-%d")),
+                ("QoQ", (date - pd.DateOffset(months=3)).strftime("%Y-%m-%d")),
+            ):
+                if prior in values and values[prior] != 0:
+                    rows.append({
+                        "Metric": metric, "Current period": date.strftime("%d %b %Y"),
+                        "Comparison": label, "Prior period": pd.Timestamp(prior).strftime("%d %b %Y"),
+                        "Basis": basis, "Unit": unit,
+                        "Growth (%)": round((values[current] / values[prior] - 1) * 100, 2),
+                    })
+    return pd.DataFrame(rows)
+
+
 
 REQUIRED = ["Open", "High", "Low", "Close", "Volume"]
 
