@@ -1016,6 +1016,16 @@ if st.session_state.get("analysis_requested", False):
                     ]
                     display_columns = [col for col in preferred_columns if col in display_data.columns]
                     st.dataframe(display_data[display_columns], use_container_width=True, hide_index=True)
+                    st.markdown("**Source classification summary**")
+                    class_summary = (
+                        intake.data.groupby("source_class", dropna=False)
+                        .agg(Rows=("metric", "size"),
+                             Sources=("source_name", lambda values: ", ".join(sorted(set(map(str, values))))))
+                        .reset_index()
+                        .rename(columns={"source_class": "Source classification"})
+                    )
+                    st.dataframe(class_summary, use_container_width=True, hide_index=True)
+                    st.caption("Classification uses the source URL domain first, then the supplied source label. It is a screening aid, not independent authentication or an audit of the filing.")
                     growth = period_growth_table(intake.data)
                     if not growth.empty:
                         st.markdown("**Like-for-like growth from uploaded filing periods**")
