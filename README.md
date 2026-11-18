@@ -10,6 +10,7 @@ A Streamlit application implementing the user's Grandfather–Father–Son frame
 
 - EOD history via Yahoo Finance (`yfinance`) or user-uploaded OHLCV CSV.
 - Independent calculation of EMA 10/20/50, SMA 50/200, RSI 14, RSI 9-period average, MACD histogram and 20-session volume average.
+- Bollinger Bands (20,2), %B, bandwidth and a trailing low-volatility squeeze diagnostic, displayed separately for entry/volatility context and excluded from GFS scoring.
 - Weighted GFS checklist score out of 100 and a transparent state classification for each timeframe.
 - Daily candlestick chart, RSI and MACD panels.
 - Confirmed multi-timeframe swing-pivot support/resistance and volatility-filtered daily Fibonacci retracement estimates.
