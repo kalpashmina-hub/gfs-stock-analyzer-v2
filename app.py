@@ -147,6 +147,30 @@ def indicators(df: pd.DataFrame) -> pd.DataFrame:
     d["MACD"] = e12 - e26
     d["MACD_SIGNAL"] = d.MACD.ewm(span=9, adjust=False).mean()
     d["MACD_HIST"] = d.MACD - d.MACD_SIGNAL
+
+    # Bollinger Bands: standard 20-period SMA and 2 population standard deviations.
+    # These are descriptive entry/volatility diagnostics only; they do not affect GFS.
+    d["BB_MIDDLE"] = c.rolling(20, min_periods=20).mean()
+    bb_std = c.rolling(20, min_periods=20).std(ddof=0)
+    d["BB_UPPER"] = d["BB_MIDDLE"] + (2 * bb_std)
+    d["BB_LOWER"] = d["BB_MIDDLE"] - (2 * bb_std)
+    bb_width = d["BB_UPPER"] - d["BB_LOWER"]
+    d["BB_PCT_B"] = (c - d["BB_LOWER"]) / bb_width.replace(0, np.nan)
+    d["BB_BANDWIDTH_PCT"] = (
+        bb_width / d["BB_MIDDLE"].replace(0, np.nan) * 100
+    )
+    # A squeeze is defined conservatively as bandwidth at/below its trailing
+    # 126-bar 20th percentile. The current bar is included in this descriptive
+    # percentile; no future observations are used.
+    d["BB_BANDWIDTH_Q20"] = d["BB_BANDWIDTH_PCT"].rolling(
+        126, min_periods=40
+    ).quantile(0.20)
+    d["BB_SQUEEZE"] = (
+        d["BB_BANDWIDTH_PCT"].notna()
+        & d["BB_BANDWIDTH_Q20"].notna()
+        & (d["BB_BANDWIDTH_PCT"] <= d["BB_BANDWIDTH_Q20"])
+    )
+
     # Compare each completed bar with the preceding 20 bars, excluding itself.
     d["VOL_MA20"] = d.Volume.shift(1).rolling(20, min_periods=10).mean()
     return d
@@ -268,6 +292,63 @@ def evaluate(df: pd.DataFrame, label: str, weight: int, is_daily=False, fast_ema
 
 def fmt(v, digits=2):
     return "—" if pd.isna(v) else f"{v:,.{digits}f}"
+
+def bollinger_context(df: pd.DataFrame):
+    """Describe Bollinger position and volatility without changing GFS scoring."""
+    if df.empty:
+        return {"Band position": "Unavailable", "%B": "—", "Bandwidth": "—",
+                "Squeeze": "Unavailable", "Middle-band signal": "Unavailable",
+                "Upper-band signal": "Unavailable"}
+    row = df.iloc[-1]
+    previous = df.iloc[-2] if len(df) >= 2 else None
+    required = [row.get("Close"), row.get("BB_MIDDLE"), row.get("BB_UPPER"),
+                row.get("BB_LOWER"), row.get("BB_PCT_B"),
+                row.get("BB_BANDWIDTH_PCT")]
+    if any(pd.isna(value) for value in required):
+        return {"Band position": "Insufficient data", "%B": "—", "Bandwidth": "—",
+                "Squeeze": "Insufficient history", "Middle-band signal": "Unavailable",
+                "Upper-band signal": "Unavailable"}
+    pct_b = float(row["BB_PCT_B"])
+    if pct_b < 0:
+        position = "Below lower band"
+    elif pct_b <= 0.20:
+        position = "Lower-band zone"
+    elif pct_b < 0.80:
+        position = "Within bands"
+    elif pct_b <= 1:
+        position = "Upper-band zone"
+    else:
+        position = "Above upper band"
+
+    squeeze = row.get("BB_SQUEEZE")
+    squeeze_q = row.get("BB_BANDWIDTH_Q20")
+    squeeze_label = (
+        "Squeeze (low volatility)" if pd.notna(squeeze) and bool(squeeze)
+        else "No squeeze" if pd.notna(squeeze) and pd.notna(squeeze_q)
+        else "Insufficient history"
+    )
+    middle_signal = "No fresh reclaim"
+    upper_signal = "No fresh upper-band cross"
+    if previous is not None:
+        prev_close = previous.get("Close")
+        prev_middle = previous.get("BB_MIDDLE")
+        prev_upper = previous.get("BB_UPPER")
+        if (pd.notna(prev_close) and pd.notna(prev_middle)
+                and prev_close <= prev_middle and row["Close"] > row["BB_MIDDLE"]):
+            middle_signal = "Fresh close above middle band"
+        if (pd.notna(prev_close) and pd.notna(prev_upper)
+                and prev_close <= prev_upper and row["Close"] > row["BB_UPPER"]):
+            upper_signal = "Fresh close above upper band"
+
+    return {
+        "Band position": position,
+        "%B": f"{pct_b:.2f}",
+        "Bandwidth": f"{float(row['BB_BANDWIDTH_PCT']):.2f}%",
+        "Squeeze": squeeze_label,
+        "Middle-band signal": middle_signal,
+        "Upper-band signal": upper_signal,
+    }
+
 
 def volume_context(df: pd.DataFrame):
     """Describe latest completed-bar volume versus its 20-period average."""
@@ -481,6 +562,21 @@ def make_chart(df, title, reset_revision=0):
     d = df.copy()
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=.05, row_heights=[.75,.25])
     fig.add_trace(go.Candlestick(x=d.index, open=d.Open, high=d.High, low=d.Low, close=d.Close, name="Price"), row=1,col=1)
+    # Bollinger Bands are shown as a visual entry/volatility aid, not a GFS input.
+    if all(col in d and d[col].notna().any() for col in ("BB_LOWER", "BB_UPPER", "BB_MIDDLE")):
+        fig.add_trace(go.Scatter(
+            x=d.index, y=d["BB_LOWER"], name="BB Lower (20,2)",
+            mode="lines", line=dict(width=1, dash="dot")
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=d.index, y=d["BB_UPPER"], name="BB Upper (20,2)",
+            mode="lines", line=dict(width=1, dash="dot"),
+            fill="tonexty", fillcolor="rgba(120, 140, 180, 0.08)"
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=d.index, y=d["BB_MIDDLE"], name="BB Middle SMA 20",
+            mode="lines", line=dict(width=1)
+        ), row=1, col=1)
     for col, name in [("EMA10","EMA 10"),("EMA20","EMA 20"),("EMA50","EMA 50"),("SMA200","SMA 200")]:
         if col in d and d[col].notna().any(): fig.add_trace(go.Scatter(x=d.index,y=d[col],name=name,mode="lines"),row=1,col=1)
     fig.add_trace(go.Bar(x=d.index,y=d.Volume,name="Volume"),row=2,col=1)
@@ -818,6 +914,27 @@ if st.session_state.get("analysis_requested", False):
         st.plotly_chart(macd_fig, use_container_width=True, config={"scrollZoom": False, "displayModeBar": False, "doubleClick": False})
         st.caption("RSI 40–60 is an assessment zone, not a rigid filter. RSI above 60 can reflect strong momentum; below 30 is not an automatic buy signal.")
 
+        st.subheader("Entry & volatility assessment — Bollinger Bands")
+        st.caption("Daily Bollinger Bands use a 20-period SMA and ±2 population standard deviations. %B shows price location within the bands; bandwidth measures volatility. A squeeze is bandwidth at/below its trailing 126-session 20th percentile (minimum 40 observations). These readings are context only and do not change the GFS score or establish fair value.")
+        bb_daily = bollinger_context(daily)
+        bb_weekly = bollinger_context(weekly)
+        bb_rows = [
+            {"Timeframe": "Daily", **bb_daily},
+            {"Timeframe": "Weekly", **bb_weekly},
+        ]
+        st.dataframe(pd.DataFrame(bb_rows), use_container_width=True, hide_index=True)
+        if bb_daily["Upper-band signal"] == "Fresh close above upper band":
+            if pd.notna(daily_relative_volume) and daily_relative_volume >= 1.5:
+                st.success("Daily price has crossed above the upper Bollinger Band with elevated volume (at least 1.5× its prior 20-session average). This is a momentum breakout candidate, not an automatic buy; check weekly trend and nearby resistance.")
+            else:
+                st.info("Daily price has crossed above the upper Bollinger Band, but volume is not confirmed at 1.5× its prior 20-session average. Treat as an unconfirmed momentum move.")
+        elif bb_daily["Band position"] == "Above upper band":
+            st.warning("Price is above the upper Bollinger Band. This can reflect strong momentum or short-term extension; avoid treating it as automatic overvaluation or chasing without a risk/reward check.")
+        elif bb_daily["Squeeze"] == "Squeeze (low volatility)":
+            st.info("Daily Bollinger bandwidth is in its trailing low-volatility zone. Watch for a confirmed close outside the bands with volume; the squeeze itself does not predict direction.")
+        elif bb_daily["Middle-band signal"] == "Fresh close above middle band":
+            st.info("Daily close has reclaimed the Bollinger middle band (20-SMA). Check whether the weekly trend and nearby resistance support an entry.")
+
         st.subheader("Multi-timeframe support and resistance")
         latest_daily_close = float(daily.Close.iloc[-1])
         st.caption(f"Cross-timeframe comparison reference: latest daily close ₹{latest_daily_close:,.2f}. Monthly and weekly levels provide structural context; daily levels are more relevant to immediate trade planning.")
@@ -1050,5 +1167,5 @@ if st.session_state.get("analysis_requested", False):
         st.info("Try another symbol, upload a clean OHLCV CSV, or retry later. The app does not silently replace missing data with estimates.")
 else:
     st.markdown("### What Version 2 includes")
-    st.markdown("- Monthly / weekly / daily GFS scoring with 35 / 35 / 30 weighting\n- EMA 10/20/50, SMA 50/200, RSI 14 + RSI MA 9, MACD and volume average\n- Candlestick chart, momentum panels, pivot support/resistance and Fibonacci retracement estimates\n- Fundamental snapshot when the selected provider supplies it\n- CSV export and a user-uploaded EOD CSV fallback")
+    st.markdown("- Monthly / weekly / daily GFS scoring with 35 / 35 / 30 weighting\n- EMA 10/20/50, SMA 50/200, RSI 14 + RSI MA 9, MACD, volume average and Bollinger Bands (20,2) for entry/volatility context\n- Candlestick chart, momentum panels, pivot support/resistance and Fibonacci retracement estimates\n- Fundamental snapshot when the selected provider supplies it\n- CSV export and a user-uploaded EOD CSV fallback")
     st.info("Start with an NSE symbol such as INFY, TCS, STLTECH, COCHINSHIP or BDL. The Yahoo feed is free but unofficial; for higher reliability, use a licensed EOD provider or upload its daily OHLCV export.")
