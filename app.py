@@ -296,16 +296,21 @@ def fmt(v, digits=2):
 def bollinger_context(df: pd.DataFrame):
     """Describe Bollinger position and volatility without changing GFS scoring."""
     if df.empty:
-        return {"Band position": "Unavailable", "%B": "—", "Bandwidth": "—",
+        return {"Last completed bar": "Unavailable", "Upper band (₹)": "—",
+                "Middle band (₹)": "—", "Lower band (₹)": "—",
+                "Band position": "Unavailable", "%B": "—", "Bandwidth": "—",
                 "Squeeze": "Unavailable", "Middle-band signal": "Unavailable",
                 "Upper-band signal": "Unavailable"}
     row = df.iloc[-1]
     previous = df.iloc[-2] if len(df) >= 2 else None
+    bar_date = pd.Timestamp(row.name).strftime("%d %b %Y")
     required = [row.get("Close"), row.get("BB_MIDDLE"), row.get("BB_UPPER"),
                 row.get("BB_LOWER"), row.get("BB_PCT_B"),
                 row.get("BB_BANDWIDTH_PCT")]
     if any(pd.isna(value) for value in required):
-        return {"Band position": "Insufficient data", "%B": "—", "Bandwidth": "—",
+        return {"Last completed bar": bar_date, "Upper band (₹)": "—",
+                "Middle band (₹)": "—", "Lower band (₹)": "—",
+                "Band position": "Insufficient data", "%B": "—", "Bandwidth": "—",
                 "Squeeze": "Insufficient history", "Middle-band signal": "Unavailable",
                 "Upper-band signal": "Unavailable"}
     pct_b = float(row["BB_PCT_B"])
@@ -341,6 +346,10 @@ def bollinger_context(df: pd.DataFrame):
             upper_signal = "Fresh close above upper band"
 
     return {
+        "Last completed bar": bar_date,
+        "Upper band (₹)": f"{float(row['BB_UPPER']):,.2f}",
+        "Middle band (₹)": f"{float(row['BB_MIDDLE']):,.2f}",
+        "Lower band (₹)": f"{float(row['BB_LOWER']):,.2f}",
         "Band position": position,
         "%B": f"{pct_b:.2f}",
         "Bandwidth": f"{float(row['BB_BANDWIDTH_PCT']):.2f}%",
@@ -915,12 +924,12 @@ if st.session_state.get("analysis_requested", False):
         st.caption("RSI 40–60 is an assessment zone, not a rigid filter. RSI above 60 can reflect strong momentum; below 30 is not an automatic buy signal.")
 
         st.subheader("Entry & volatility assessment — Bollinger Bands")
-        st.caption("Daily Bollinger Bands use a 20-period SMA and ±2 population standard deviations. %B shows price location within the bands; bandwidth measures volatility. A squeeze is bandwidth at/below its trailing 126-session 20th percentile (minimum 40 observations). These readings are context only and do not change the GFS score or establish fair value.")
+        st.caption("Daily and weekly Bollinger Bands use Close, a 20-period SMA and ±2 population standard deviations. The table reports the latest completed candle for each timeframe, not an unfinished live candle. %B shows price location within the bands; bandwidth measures volatility. A squeeze is bandwidth at/below its trailing 126-period 20th percentile (minimum 40 observations). These readings are context only and do not change the GFS score or establish fair value.")
         bb_daily = bollinger_context(daily)
         bb_weekly = bollinger_context(weekly)
         bb_rows = [
-            {"Timeframe": "Daily", **bb_daily},
-            {"Timeframe": "Weekly", **bb_weekly},
+            {"Timeframe": "Daily", "Data source": source_label, **bb_daily},
+            {"Timeframe": "Weekly", "Data source": source_label, **bb_weekly},
         ]
         st.dataframe(pd.DataFrame(bb_rows), use_container_width=True, hide_index=True)
         if bb_daily["Upper-band signal"] == "Fresh close above upper band":
