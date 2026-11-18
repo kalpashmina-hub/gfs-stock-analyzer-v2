@@ -111,20 +111,30 @@ def validate_fundamental_upload(raw: pd.DataFrame) -> FundamentalIntake:
         )
         return name_match or host_match
 
-    df["source_class"] = df.apply(
-        lambda row: (
-            "Primary — stock exchange filing"
-            if (urlparse(str(row["source_url"])).hostname or "").lower().endswith(
-                ("nseindia.com", "bseindia.com")
-            )
-            else "Primary — company disclosure"
-            if (urlparse(str(row["source_url"])).hostname or "").lower().endswith("tcs.com")
-            else "Primary — recognised source label"
-            if any(hint in str(row["source_name"]).strip().lower() for hint in PRIMARY_SOURCE_HINTS)
-            else "Secondary — cross-check only"
-        ),
-        axis=1,
-    )
+    def classify_row_source(row) -> str:
+        host = (urlparse(str(row["source_url"])).hostname or "").lower().rstrip(".")
+        name = str(row["source_name"]).strip().lower()
+        # Exact domain boundaries avoid treating lookalike domains as official.
+        if host == "nseindia.com" or host.endswith(".nseindia.com"):
+            return "Primary — NSE exchange domain"
+        if host == "bseindia.com" or host.endswith(".bseindia.com"):
+            return "Primary — BSE exchange domain"
+        secondary_hosts = (
+            "screener.in", "trendlyne.com", "tijorifinance.com",
+            "moneycontrol.com", "tickertape.in",
+        )
+        if any(host == domain or host.endswith("." + domain) for domain in secondary_hosts):
+            return "Secondary — cross-check only"
+        company_label = any(term in name for term in (
+            "company", "investor relations", "annual report", "results release",
+            "financial results", "company disclosure",
+        ))
+        if company_label and host:
+            return "Primary — company disclosure (label + domain)"
+        if any(term in name for term in ("secondary", "cross-check", "screener", "trendlyne", "tijori")):
+            return "Secondary — cross-check only"
+        return "Unclassified — verify source"
+    df["source_class"] = df.apply(classify_row_source, axis=1)
     non_primary = df["source_class"].eq("Secondary — cross-check only")
     if non_primary.any():
         source_names = sorted(df.loc[non_primary, "source_name"].astype(str).unique())
