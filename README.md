@@ -97,7 +97,7 @@ The prepared pilot CSV is a primary-source extract, not a complete fundamental m
 
 These are not interchangeable. For Q2 FY27 the reported consolidated values are ₹13,934 crore and ₹13,884 crore respectively. For Q1 FY27 comparative values they are ₹13,420 crore and ₹13,349 crore respectively. The CSV uses the quarter-end dates and the audited filing date, not a generic provider quarter-reference date.
 
-The pilot currently contains primary NSE filing rows only. Secondary-source rows were removed because matching numbers copied into a secondary-source row would create a misleading appearance of independent corroboration. A genuine secondary cross-check must be independently retrieved, with its own source record, and must match metric definition, period, basis and unit before comparison.
+The pilot contains primary-source rows from two distinct publishers: NSE Integrated Filing rows for Ind AS financial-statement measures, and TCS investor-relations rows for selected IFRS cash-flow, margin and balance-sheet measures. These are both primary disclosures, but they are not interchangeable accounting presentations. Secondary-source rows were removed because matching numbers copied into a secondary-source row would create a misleading appearance of independent corroboration. A genuine secondary cross-check must be independently retrieved, with its own source record, and must match metric definition, period, basis and unit before comparison.
 
 Source reference: TCS audited consolidated interim financial results for the quarter and six months ended 30 September 2026, approved 8 October 2026. See the NSE Integrated Filing record and the company's investor-relations results. No fundamental score is produced from this pilot.
 
