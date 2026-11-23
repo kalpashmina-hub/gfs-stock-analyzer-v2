@@ -9,6 +9,7 @@ from fundamental_data import (
     compare_sources,
     period_growth_table,
     source_reconciliation_coverage,
+    fundamental_quality_tables,
     validate_fundamental_upload,
 )
 
@@ -55,6 +56,11 @@ class FundamentalIntakeTests(unittest.TestCase):
         self.assertTrue((comparisons["Difference (%)"] == 0).all())
         growth = period_growth_table(result.data)
         self.assertTrue(((growth["Metric"] == "revenue_from_operations") & (growth["Comparison"] == "YoY")).any())
+        operating, balance, gaps = fundamental_quality_tables(result.data)
+        self.assertTrue((operating["Metric"] == "Operating Margin").any())
+        self.assertTrue((operating["Metric"] == "Operating Cash Flow To Net Profit").any())
+        self.assertTrue((balance["Metric"] == "Cash and investments / total assets").any())
+        self.assertTrue((gaps["Metric not available"] == "Interest-bearing borrowings and lease liabilities").any())
         q1 = result.data[result.data["period_end"] == pd.Timestamp("2026-06-30")]
         profit = q1.set_index("metric")["value"]
         self.assertEqual(float(profit["profit_before_exceptional_items_and_tax"]), 18612.0)
