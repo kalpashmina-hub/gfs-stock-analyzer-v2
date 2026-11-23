@@ -1159,6 +1159,7 @@ if st.session_state.get("analysis_requested", False):
                         st.caption("Growth is calculated only when metric, basis, unit and exact comparison period match. It is not annualised. Profit growth is withheld pending exceptional-item and Ind AS / IFRS comparability review.")
                     reconciliation_summary, reconciliation_review = source_reconciliation_coverage(intake.data)
                     st.markdown("**Source reconciliation coverage**")
+                    st.caption("A distinct publisher is not automatically independent evidence. Secondary aggregators may reproduce issuer filings; trace each match to the original exchange/company document.")
                     st.dataframe(reconciliation_summary, use_container_width=True, hide_index=True)
                     if not reconciliation_review.empty:
                         st.dataframe(reconciliation_review, use_container_width=True, hide_index=True)
@@ -1168,6 +1169,7 @@ if st.session_state.get("analysis_requested", False):
                     if not disagreements.empty:
                         st.markdown("**Cross-source differences requiring review**")
                         st.dataframe(disagreements, use_container_width=True, hide_index=True)
+                        st.caption("Zero difference means the displayed figures agree; it does not establish that the secondary publisher independently audited or calculated them.")
                     else:
                         st.info("No same-period, same-basis, same-unit multi-source pairs were uploaded. This means no cross-source comparison was possible; it is not a clean verification result.")
             except Exception as exc:
