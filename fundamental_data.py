@@ -181,6 +181,38 @@ def validate_fundamental_upload(raw: pd.DataFrame) -> FundamentalIntake:
     )
 
 
+
+def _publisher_domain(source_url: object) -> str:
+    """Normalize publisher domains so subdomains count as one publisher."""
+    host = (urlparse(str(source_url or "")).hostname or "").lower().rstrip(".")
+    for domain in (*PRIMARY_HOSTS.keys(), *SECONDARY_HOSTS):
+        if _host_matches(host, domain):
+            return domain
+    return host
+
+
+def source_reconciliation_coverage(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Summarize exact metric/period/basis/unit coverage across distinct publishers."""
+    columns = ["Comparable metric-period groups", "Single-publisher groups", "Same-publisher duplicate groups", "Total metric-period groups"]
+    if data.empty:
+        return pd.DataFrame(columns=columns), pd.DataFrame()
+    keys = ["metric", "period_end", "basis", "unit"]
+    rows = []
+    for key, group in data.groupby(keys, dropna=False):
+        urls = group["source_url"] if "source_url" in group else pd.Series(index=group.index, dtype="object")
+        publishers = sorted({domain for domain in (_publisher_domain(url) for url in urls) if domain})
+        count = len(group)
+        if len(publishers) >= 2:
+            status = "Comparable publishers — review values"
+        elif count > 1:
+            status = "Multiple records, same publisher — not independent"
+        else:
+            status = "Single publisher — no corroboration"
+        rows.append({"Metric": key[0], "Period end": pd.Timestamp(key[1]).strftime("%d %b %Y") if pd.notna(key[1]) else "—", "Basis": key[2], "Unit": key[3], "Source records": count, "Publisher count": len(publishers), "Publishers": ", ".join(publishers) if publishers else "Unknown", "Status": status})
+    details = pd.DataFrame(rows)
+    summary = pd.DataFrame([{"Comparable metric-period groups": int(details["Status"].str.startswith("Comparable publishers").sum()), "Single-publisher groups": int(details["Status"].str.startswith("Single publisher").sum()), "Same-publisher duplicate groups": int(details["Status"].str.startswith("Multiple records").sum()), "Total metric-period groups": len(details)}], columns=columns)
+    return summary, details[details["Publisher count"] > 1].reset_index(drop=True)
+
 def compare_sources(data: pd.DataFrame) -> pd.DataFrame:
     """Show differences across multiple rows for identical metric/period/basis/unit."""
     if data.empty:
@@ -189,6 +221,11 @@ def compare_sources(data: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for key, group in data.groupby(keys, dropna=False):
         if len(group) < 2:
+            continue
+        urls = group["source_url"] if "source_url" in group else pd.Series(index=group.index, dtype="object")
+        publishers = {_publisher_domain(url) for url in urls}
+        publishers.discard("")
+        if len(publishers) < 2:
             continue
         values = group["value"].dropna()
         if len(values) < 2:
