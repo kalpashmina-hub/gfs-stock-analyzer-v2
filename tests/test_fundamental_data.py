@@ -34,6 +34,15 @@ class FundamentalIntakeTests(unittest.TestCase):
         self.assertEqual(len(result.data), len(raw))
         self.assertTrue(result.data["source_class"].str.startswith("Primary").all())
         self.assertEqual(set(result.data["basis"]), {"consolidated"})
+        self.assertIn("Primary — NSE exchange domain", set(result.data["source_class"]))
+        self.assertIn("Primary — company disclosure domain", set(result.data["source_class"]))
+        q2 = result.data[result.data["period_end"] == pd.Timestamp("2026-09-30")]
+        q2_values = q2.set_index("metric")["value"]
+        self.assertEqual(float(q2_values["revenue_from_operations"]), 73188.0)
+        self.assertEqual(float(q2_values["profit_before_tax"]), 18638.0)
+        self.assertEqual(float(q2_values["profit_after_tax_before_non_controlling_interests"]), 13934.0)
+        self.assertEqual(float(q2_values["net_profit_attributable_to_owners"]), 13884.0)
+        self.assertEqual(float(q2_values["eps_basic_diluted"]), 38.37)
         q1 = result.data[result.data["period_end"] == pd.Timestamp("2026-06-30")]
         profit = q1.set_index("metric")["value"]
         self.assertEqual(float(profit["profit_before_exceptional_items_and_tax"]), 18612.0)
