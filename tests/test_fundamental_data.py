@@ -74,6 +74,20 @@ class FundamentalIntakeTests(unittest.TestCase):
         self.assertTrue(len(q1_nse_indas) > 0)
         self.assertTrue(q1_nse_indas["source_url"].str.contains("173420_09072026").all())
 
+        q3 = result.data[result.data["period_end"] == pd.Timestamp("2025-12-31")]
+        q3_primary = q3[q3["source_class"].str.startswith("Primary")]
+        q3_values = q3_primary.set_index("metric")["value"]
+        self.assertEqual(float(q3_values["revenue_from_operations"]), 67087.0)
+        self.assertEqual(float(q3_values["profit_before_tax"]), 17811.0)
+        self.assertIn("excludes exceptional items", str(q3_primary.loc[q3_primary["metric"] == "profit_before_tax", "unit"].iloc[0]))
+        q4 = result.data[result.data["period_end"] == pd.Timestamp("2026-03-31")]
+        q4_values = q4.set_index("metric")["value"]
+        self.assertEqual(float(q4_values["revenue_from_operations"]), 70698.0)
+        self.assertEqual(float(q4_values["profit_before_tax"]), 18362.0)
+        self.assertEqual(float(q4_values["eps_basic_diluted"]), 37.92)
+        self.assertEqual(float(q4_values["operating_margin"]), 25.3)
+
+
     def test_future_period_and_filing_dates_are_rejected(self):
         future = self.valid.copy()
         future.loc[0, "period_end"] = "30-12-2026"
