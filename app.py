@@ -7,7 +7,7 @@ import pandas as pd
 import streamlit as st
 import yfinance as yf
 import plotly.graph_objects as go
-from fundamental_data import validate_fundamental_upload, compare_sources, latest_filing_status
+from fundamental_data import validate_fundamental_upload, compare_sources, latest_filing_status, source_reconciliation_coverage
 from plotly.subplots import make_subplots
 
 st.set_page_config(page_title="GFS Stock Analyzer V2", page_icon="📈", layout="wide")
@@ -1157,6 +1157,13 @@ if st.session_state.get("analysis_requested", False):
                         st.markdown("**Like-for-like growth from uploaded filing periods**")
                         st.dataframe(growth, use_container_width=True, hide_index=True)
                         st.caption("Growth is calculated only when metric, basis, unit and exact comparison period match. It is not annualised. Profit growth is withheld pending exceptional-item and Ind AS / IFRS comparability review.")
+                    reconciliation_summary, reconciliation_review = source_reconciliation_coverage(intake.data)
+                    st.markdown("**Source reconciliation coverage**")
+                    st.dataframe(reconciliation_summary, use_container_width=True, hide_index=True)
+                    if not reconciliation_review.empty:
+                        st.dataframe(reconciliation_review, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("No exact metric/period/basis/unit groups currently have records from two distinct publisher domains. Different units or accounting presentations are deliberately kept separate.")
                     disagreements = compare_sources(intake.data)
                     if not disagreements.empty:
                         st.markdown("**Cross-source differences requiring review**")
