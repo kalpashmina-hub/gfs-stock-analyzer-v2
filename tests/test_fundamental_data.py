@@ -37,7 +37,7 @@ class FundamentalIntakeTests(unittest.TestCase):
         self.assertEqual(set(result.data["basis"]), {"consolidated"})
         self.assertIn("Primary — NSE exchange domain", set(result.data["source_class"]))
         self.assertIn("Primary — company disclosure domain", set(result.data["source_class"]))
-        q2 = result.data[result.data["period_end"] == pd.Timestamp("2026-09-30")]
+        q2 = result.data[(result.data["period_end"] == pd.Timestamp("2026-09-30")) & result.data["source_class"].str.startswith("Primary")]
         q2_values = q2.set_index("metric")["value"]
         self.assertEqual(float(q2_values["revenue_from_operations"]), 73188.0)
         self.assertEqual(float(q2_values["profit_before_tax"]), 18638.0)
@@ -125,8 +125,8 @@ class FundamentalIntakeTests(unittest.TestCase):
 
     def test_source_comparison_reports_spread(self):
         data = pd.DataFrame([
-            {"metric": "revenue", "value": 100, "period_end": pd.Timestamp("2026-09-30"), "basis": "consolidated", "unit": "INR crore", "source_name": "NSE"},
-            {"metric": "revenue", "value": 101, "period_end": pd.Timestamp("2026-09-30"), "basis": "consolidated", "unit": "INR crore", "source_name": "Company"},
+            {"metric": "revenue", "value": 100, "period_end": pd.Timestamp("2026-09-30"), "basis": "consolidated", "unit": "INR crore", "source_name": "NSE", "source_url": "https://nseindia.com/a"},
+            {"metric": "revenue", "value": 101, "period_end": pd.Timestamp("2026-09-30"), "basis": "consolidated", "unit": "INR crore", "source_name": "Company", "source_url": "https://tcs.com/a"},
         ])
         comparison = compare_sources(data)
         self.assertEqual(len(comparison), 1)
