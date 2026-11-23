@@ -253,6 +253,138 @@ def compare_sources(data: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+
+def fundamental_quality_tables(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Build descriptive quality and balance-sheet views from reported observations.
+
+    This deliberately does not assign a score or infer missing debt/EBITDA values.
+    Only validated primary-source rows are used for the displayed snapshot.
+    """
+    operating_columns = ["Metric", "Period", "Reported value", "Unit", "Interpretation note"]
+    balance_columns = ["Metric", "Period", "Value", "Unit", "Interpretation note"]
+    missing_columns = ["Metric not available", "Why it matters"]
+
+    if data.empty:
+        return (
+            pd.DataFrame(columns=operating_columns),
+            pd.DataFrame(columns=balance_columns),
+            pd.DataFrame(columns=missing_columns),
+        )
+
+    d = data.copy()
+    if "source_class" in d.columns:
+        d = d[d["source_class"].astype(str).str.startswith("Primary")].copy()
+    if d.empty:
+        return (
+            pd.DataFrame(columns=operating_columns),
+            pd.DataFrame(columns=balance_columns),
+            pd.DataFrame(columns=missing_columns),
+        )
+
+    def latest(metric: str, unit_contains: str | None = None) -> pd.Series | None:
+        rows = d[(d["metric"] == metric) & (d["basis"] == "consolidated")].copy()
+        if unit_contains:
+            rows = rows[rows["unit"].astype(str).str.contains(unit_contains, case=False, regex=False)]
+        if rows.empty:
+            return None
+        max_period = rows["period_end"].max()
+        rows = rows[rows["period_end"] == max_period]
+        # If multiple primary rows disagree, do not choose one silently.
+        if rows["value"].nunique(dropna=True) != 1:
+            return None
+        return rows.iloc[0]
+
+    operating_specs = [
+        ("operating_margin", "IFRS; quarter", "Reported quarterly operating margin; one quarter is not a trend."),
+        ("net_margin", "IFRS; quarter", "Reported quarterly net margin; confirm the issuer's definition before peer comparison."),
+        ("net_cash_from_operating_activities", "IFRS; quarter", "Quarterly operating cash flow; assess across several periods."),
+        ("free_cash_flow", "IFRS; quarter", "Reported quarterly free cash flow; verify the issuer's capex definition."),
+        ("capital_expenditure", "IFRS; quarter", "Quarterly capital expenditure; compare with operating cash flow over time."),
+        ("operating_cash_flow_to_sales", "IFRS; quarter", "Issuer-reported operating cash flow to sales ratio."),
+        ("operating_cash_flow_to_net_profit", "IFRS; quarter", "Issuer-reported cash flow to net profit ratio; above 100% in one quarter is not a standalone quality verdict."),
+    ]
+    operating_rows = []
+    for metric, unit_hint, note in operating_specs:
+        row = latest(metric, unit_hint)
+        if row is not None:
+            operating_rows.append({
+                "Metric": metric.replace("_", " ").title(),
+                "Period": pd.Timestamp(row["period_end"]).strftime("%d %b %Y"),
+                "Reported value": float(row["value"]),
+                "Unit": row["unit"],
+                "Interpretation note": note,
+            })
+
+    balance_specs = [
+        ("total_cash_and_investments", "Cash and investments"),
+        ("total_assets", "Total assets"),
+        ("shareholders_funds", "Shareholders' funds"),
+        ("current_liabilities", "Current liabilities"),
+        ("non_current_liabilities", "Non-current liabilities"),
+    ]
+    balance_values: dict[str, pd.Series] = {}
+    for metric, _ in balance_specs:
+        row = latest(metric, "IFRS balance sheet")
+        if row is not None:
+            balance_values[metric] = row
+
+    balance_rows = []
+    periods = {pd.Timestamp(row["period_end"]) for row in balance_values.values()}
+    units = {str(row["unit"]) for row in balance_values.values()}
+    # Raw balances are displayed even if one input is missing; derived ratios
+    # are calculated only when every required input shares one date and unit.
+    for metric, label in balance_specs:
+        row = balance_values.get(metric)
+        if row is not None:
+            balance_rows.append({
+                "Metric": label,
+                "Period": pd.Timestamp(row["period_end"]).strftime("%d %b %Y"),
+                "Value": float(row["value"]),
+                "Unit": row["unit"],
+                "Interpretation note": "Reported IFRS consolidated balance-sheet amount; point-in-time, not a quarterly flow.",
+            })
+
+    if len(periods) == 1 and len(units) == 1 and "total_assets" in balance_values:
+        assets = float(balance_values["total_assets"]["value"])
+        if assets > 0:
+            derived = []
+            if "total_cash_and_investments" in balance_values:
+                derived.append(("Cash and investments / total assets", "total_cash_and_investments"))
+            if "shareholders_funds" in balance_values:
+                derived.append(("Shareholders' funds / total assets", "shareholders_funds"))
+            liabilities_present = all(k in balance_values for k in ("current_liabilities", "non_current_liabilities"))
+            if liabilities_present:
+                total_liabilities = (
+                    float(balance_values["current_liabilities"]["value"])
+                    + float(balance_values["non_current_liabilities"]["value"])
+                )
+                derived.append(("Current plus non-current liabilities / total assets", None))
+            for label, key in derived:
+                numerator = total_liabilities if key is None else float(balance_values[key]["value"])
+                balance_rows.append({
+                    "Metric": label,
+                    "Period": next(iter(periods)).strftime("%d %b %Y"),
+                    "Value": round(numerator / assets * 100, 2),
+                    "Unit": "% of total assets",
+                    "Interpretation note": "Derived from same-date IFRS balance-sheet lines; not a debt ratio or liquidity score.",
+                })
+
+    missing_specs = [
+        ("Interest-bearing borrowings and lease liabilities", "Needed to assess gross debt and net debt; total liabilities are not a substitute."),
+        ("Finance costs / interest expense", "Needed to assess interest coverage and financing burden."),
+        ("EBITDA or operating profit reconciliation", "Needed for consistent operating-profitability and EV/EBITDA analysis."),
+        ("Current assets and inventories", "Needed for current and quick liquidity ratios."),
+        ("Trade receivables and contract assets", "Needed to assess collection quality and working-capital intensity."),
+        ("At least 8 quarters of comparable results", "Needed to distinguish durable growth and margin trends from quarterly volatility."),
+    ]
+    missing_rows = [{"Metric not available": metric, "Why it matters": why} for metric, why in missing_specs]
+    return (
+        pd.DataFrame(operating_rows, columns=operating_columns),
+        pd.DataFrame(balance_rows, columns=balance_columns),
+        pd.DataFrame(missing_rows, columns=missing_columns),
+    )
+
+
 def latest_filing_status(data: pd.DataFrame) -> pd.DataFrame:
     """Summarize latest period and filing metadata separately by reporting basis."""
     if data.empty:
