@@ -8,6 +8,7 @@ from fundamental_data import (
     classify_source,
     compare_sources,
     period_growth_table,
+    source_reconciliation_coverage,
     validate_fundamental_upload,
 )
 
@@ -88,6 +89,28 @@ class FundamentalIntakeTests(unittest.TestCase):
             {"metric": "revenue_from_operations", "value": 120, "period_end": pd.Timestamp("2026-09-30"), "basis": "consolidated", "unit": "INR crore"},
         ])
         self.assertTrue(period_growth_table(data).empty)
+
+    def test_reconciliation_requires_distinct_publishers(self):
+        data = pd.DataFrame([
+            {"metric": "revenue", "value": 100, "period_end": pd.Timestamp("2026-09-30"), "basis": "consolidated", "unit": "INR crore", "source_url": "https://www.nseindia.com/a"},
+            {"metric": "revenue", "value": 100, "period_end": pd.Timestamp("2026-09-30"), "basis": "consolidated", "unit": "INR crore", "source_url": "https://nsearchives.nseindia.com/b"},
+            {"metric": "profit", "value": 50, "period_end": pd.Timestamp("2026-09-30"), "basis": "consolidated", "unit": "INR crore", "source_url": "https://tcs.com/a"},
+        ])
+        summary, review = source_reconciliation_coverage(data)
+        self.assertEqual(int(summary.iloc[0]["Comparable metric-period groups"]), 0)
+        self.assertEqual(int(summary.iloc[0]["Same-publisher duplicate groups"]), 1)
+        self.assertTrue(review.empty)
+
+    def test_reconciliation_detects_distinct_publishers_only_for_exact_unit(self):
+        data = pd.DataFrame([
+            {"metric": "revenue", "value": 100, "period_end": pd.Timestamp("2026-09-30"), "basis": "consolidated", "unit": "INR crore", "source_url": "https://nseindia.com/a"},
+            {"metric": "revenue", "value": 101, "period_end": pd.Timestamp("2026-09-30"), "basis": "consolidated", "unit": "INR crore", "source_url": "https://tcs.com/a"},
+            {"metric": "revenue", "value": 7, "period_end": pd.Timestamp("2026-09-30"), "basis": "consolidated", "unit": "USD million", "source_url": "https://example.org/a"},
+        ])
+        summary, review = source_reconciliation_coverage(data)
+        self.assertEqual(int(summary.iloc[0]["Comparable metric-period groups"]), 1)
+        self.assertEqual(len(review), 1)
+        self.assertEqual(int(review.iloc[0]["Publisher count"]), 2)
 
     def test_source_comparison_reports_spread(self):
         data = pd.DataFrame([
