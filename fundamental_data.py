@@ -202,8 +202,14 @@ def source_reconciliation_coverage(data: pd.DataFrame) -> tuple[pd.DataFrame, pd
         urls = group["source_url"] if "source_url" in group else pd.Series(index=group.index, dtype="object")
         publishers = sorted({domain for domain in (_publisher_domain(url) for url in urls) if domain})
         count = len(group)
-        if len(publishers) >= 2:
-            status = "Comparable publishers — review values"
+        secondary_present = (
+            group["source_class"].astype(str).str.startswith("Secondary").any()
+            if "source_class" in group.columns else False
+        )
+        if len(publishers) >= 2 and secondary_present:
+            status = "Cross-publisher check — includes secondary source; verify original filing"
+        elif len(publishers) >= 2:
+            status = "Distinct publishers — review values and provenance"
         elif count > 1:
             status = "Multiple records, same publisher — not independent"
         else:
@@ -238,6 +244,7 @@ def compare_sources(data: pd.DataFrame) -> pd.DataFrame:
             "Basis": key[2],
             "Unit": key[3],
             "Sources": ", ".join(group["source_name"].astype(str).unique()),
+            "Source classes": ", ".join(sorted(set(group.get("source_class", pd.Series(["Unclassified"] * len(group), index=group.index)).astype(str)))),
             "Low": low,
             "High": high,
             "Difference (%)": round(spread_pct, 2),
@@ -273,8 +280,19 @@ def period_growth_table(data: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
 
     keys = ["metric", "period_end", "basis", "unit"]
-    # Exclude every row in a duplicate key group, even when duplicate values match.
-    subset = subset.loc[~subset.duplicated(keys, keep=False)]
+    # For duplicate observations, retain exactly one primary row only when
+    # secondary publisher rows agree with it. Conflicts remain excluded.
+    selected = []
+    for _, group in subset.groupby(keys, dropna=False):
+        if len(group) == 1:
+            selected.append(group.index[0])
+            continue
+        if "source_class" not in group.columns:
+            continue
+        primary = group[group["source_class"].astype(str).str.startswith("Primary")]
+        if len(primary) == 1 and group["value"].nunique(dropna=True) == 1:
+            selected.append(primary.index[0])
+    subset = subset.loc[selected]
     rows = []
     for (metric, basis, unit), group in subset.groupby(["metric", "basis", "unit"]):
         values = {
