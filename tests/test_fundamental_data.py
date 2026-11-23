@@ -44,6 +44,17 @@ class FundamentalIntakeTests(unittest.TestCase):
         self.assertEqual(float(q2_values["profit_after_tax_before_non_controlling_interests"]), 13934.0)
         self.assertEqual(float(q2_values["net_profit_attributable_to_owners"]), 13884.0)
         self.assertEqual(float(q2_values["eps_basic_diluted"]), 38.37)
+        secondary_q2 = result.data[result.data["source_class"].eq("Secondary — cross-check only")]
+        self.assertEqual(len(secondary_q2), 3)
+        self.assertTrue(secondary_q2["source_name"].str.contains("Trendlyne secondary cross-check").all())
+        coverage, review = source_reconciliation_coverage(result.data)
+        self.assertEqual(int(coverage.iloc[0]["Comparable metric-period groups"]), 3)
+        self.assertEqual(len(review), 3)
+        comparisons = compare_sources(result.data)
+        self.assertEqual(len(comparisons), 3)
+        self.assertTrue((comparisons["Difference (%)"] == 0).all())
+        growth = period_growth_table(result.data)
+        self.assertTrue(((growth["Metric"] == "revenue_from_operations") & (growth["Comparison"] == "YoY")).any())
         q1 = result.data[result.data["period_end"] == pd.Timestamp("2026-06-30")]
         profit = q1.set_index("metric")["value"]
         self.assertEqual(float(profit["profit_before_exceptional_items_and_tax"]), 18612.0)
