@@ -34,6 +34,11 @@ class FundamentalIntakeTests(unittest.TestCase):
         self.assertEqual(len(result.data), len(raw))
         self.assertTrue(result.data["source_class"].str.startswith("Primary").all())
         self.assertEqual(set(result.data["basis"]), {"consolidated"})
+        q1 = result.data[result.data["period_end"] == pd.Timestamp("2026-06-30")]
+        profit = q1.set_index("metric")["value"]
+        self.assertEqual(float(profit["profit_after_tax_before_non_controlling_interests"]), 13420.0)
+        self.assertEqual(float(profit["net_profit_attributable_to_owners"]), 13349.0)
+        self.assertTrue(q1["source_url"].str.contains("173420_09072026").all())
 
     def test_future_period_and_filing_dates_are_rejected(self):
         future = self.valid.copy()
