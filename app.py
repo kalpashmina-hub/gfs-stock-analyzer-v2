@@ -7,7 +7,7 @@ import pandas as pd
 import streamlit as st
 import yfinance as yf
 import plotly.graph_objects as go
-from fundamental_data import validate_fundamental_upload, compare_sources, latest_filing_status, source_reconciliation_coverage
+from fundamental_data import validate_fundamental_upload, compare_sources, latest_filing_status, source_reconciliation_coverage, fundamental_quality_tables, period_growth_table as filing_period_growth_table
 from plotly.subplots import make_subplots
 
 st.set_page_config(page_title="GFS Stock Analyzer V2", page_icon="📈", layout="wide")
@@ -15,33 +15,8 @@ st.title("📈 GFS Stock Analyzer — Version 2")
 st.caption("Grandfather: Monthly  |  Father: Weekly  |  Son: Daily  •  EOD decision-support system")
 
 def period_growth_table(data: pd.DataFrame) -> pd.DataFrame:
-    """Calculate conservative like-for-like growth for revenue and cash flow."""
-    if data.empty:
-        return pd.DataFrame()
-    eligible = {"revenue_from_operations", "net_cash_from_operating_activities", "free_cash_flow"}
-    d = data[data["metric"].isin(eligible)].copy()
-    if d.empty:
-        return pd.DataFrame()
-    keys = ["metric", "period_end", "basis", "unit"]
-    d = d.drop_duplicates(keys, keep=False)
-    rows = []
-    for (metric, basis, unit), group in d.groupby(["metric", "basis", "unit"]):
-        values = {pd.Timestamp(r.period_end).strftime("%Y-%m-%d"): float(r.value)
-                  for r in group.itertuples()}
-        for current in sorted(values):
-            date = pd.Timestamp(current)
-            for label, prior in (
-                ("YoY", (date - pd.DateOffset(years=1)).strftime("%Y-%m-%d")),
-                ("QoQ", (date - pd.DateOffset(months=3)).strftime("%Y-%m-%d")),
-            ):
-                if prior in values and values[prior] != 0:
-                    rows.append({
-                        "Metric": metric, "Current period": date.strftime("%d %b %Y"),
-                        "Comparison": label, "Prior period": pd.Timestamp(prior).strftime("%d %b %Y"),
-                        "Basis": basis, "Unit": unit,
-                        "Growth (%)": round((values[current] / values[prior] - 1) * 100, 2),
-                    })
-    return pd.DataFrame(rows)
+    """Use the validated filing module's duplicate-aware like-for-like growth."""
+    return filing_period_growth_table(data)
 
 
 
@@ -1157,6 +1132,22 @@ if st.session_state.get("analysis_requested", False):
                         st.markdown("**Like-for-like growth from uploaded filing periods**")
                         st.dataframe(growth, use_container_width=True, hide_index=True)
                         st.caption("Growth is calculated only when metric, basis, unit and exact comparison period match. It is not annualised. Profit growth is withheld pending exceptional-item and Ind AS / IFRS comparability review.")
+                    operating_quality, balance_structure, missing_fundamentals = fundamental_quality_tables(intake.data)
+                    st.markdown("**Profitability and cash-flow quality**")
+                    if not operating_quality.empty:
+                        st.dataframe(operating_quality, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("No primary-source quarterly margin or cash-flow quality metrics are available in this upload.")
+                    st.caption("Reported margins and cash-conversion ratios are shown as disclosed. One quarter is not enough to establish a durable trend or assign an earnings-quality grade.")
+                    st.markdown("**Balance-sheet structure**")
+                    if not balance_structure.empty:
+                        st.dataframe(balance_structure, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("No comparable primary-source balance-sheet snapshot is available.")
+                    st.caption("Balance-sheet amounts are point-in-time figures. Derived percentages use same-date, same-unit IFRS lines and are descriptive only; they are not debt, liquidity or solvency scores.")
+                    st.markdown("**Important fundamental data gaps**")
+                    st.dataframe(missing_fundamentals, use_container_width=True, hide_index=True)
+                    st.caption("No overall fundamental score is calculated until these missing inputs and multi-quarter history are supplied and verified.")
                     reconciliation_summary, reconciliation_review = source_reconciliation_coverage(intake.data)
                     st.markdown("**Source reconciliation coverage**")
                     st.caption("A distinct publisher is not automatically independent evidence. Secondary aggregators may reproduce issuer filings; trace each match to the original exchange/company document.")
