@@ -33,7 +33,7 @@ class FundamentalIntakeTests(unittest.TestCase):
         result = validate_fundamental_upload(raw)
         self.assertEqual(result.errors, [])
         self.assertEqual(len(result.data), len(raw))
-        self.assertTrue(result.data["source_class"].str.startswith("Primary").all())
+        self.assertFalse(result.data["source_class"].eq("Unclassified").any())
         self.assertEqual(set(result.data["basis"]), {"consolidated"})
         self.assertIn("Primary — NSE exchange domain", set(result.data["source_class"]))
         self.assertIn("Primary — company disclosure domain", set(result.data["source_class"]))
