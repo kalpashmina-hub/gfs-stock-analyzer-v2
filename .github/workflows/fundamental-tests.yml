@@ -1,0 +1,32 @@
+name: Fundamental data regression tests
+
+on:
+  push:
+    branches:
+      - v2-review-upgrade
+  pull_request:
+    branches:
+      - v2-review-upgrade
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fundamental-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install test dependency
+        run: python -m pip install --upgrade pip pandas
+
+      - name: Run fundamental-data regression tests
+        run: python -m unittest discover -s tests -p "test_*.py" -v
