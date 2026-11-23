@@ -133,8 +133,8 @@ date and numeric validation, duplicate-safe growth and source comparisons.
 **TCS pilot review caveat:** the CSV intentionally contains both Ind AS filing
 metrics and IFRS release metrics. Keep these accounting presentations distinct.
 The Q1 FY27 revenue, PBT and profit rows now point to the July 9, 2026 Q1 filing;
-the profit values were corrected from 13,920 / 13,849 to 13,420 / 13,349 crore
-after cross-checking the Q1 reported figures. Regression tests assert these
-corrected values and the Q1 filing URL. Continue to compare only identical
+the profit values were corrected from 13,920 / 13,849 to 13,420 / 13,349 crore,
+and Q1 EPS was corrected from ₹38.28 to ₹36.90. These values and the Q1 filing
+URL are asserted by regression tests. Continue to compare only identical
 accounting standards, metric definitions, periods and units. No fundamental
 score is calculated.
