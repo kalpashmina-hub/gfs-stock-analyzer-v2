@@ -109,3 +109,30 @@ The TCS Q2 FY27 pilot now includes quarterly operating cash flow, capital expend
 The app also calculates like-for-like revenue and cash-flow growth only when the same metric, period basis, unit and exact comparison quarter exist. It deliberately withholds automated profit-growth calculations until exceptional-item treatment and Ind AS/IFRS comparability have been reconciled. A source label is metadata, not proof of independent verification. Secondary-source matching values are not added unless independently retrieved and checked.
 
 No fundamental score is produced yet. The pilot remains a data-quality and reconciliation exercise; the original Yahoo snapshot is not overwritten.
+
+
+### Fundamental intake quality checks
+
+The source-aware intake now validates non-empty metadata, finite numeric values,
+HTTP(S) source links, reporting dates, reporting basis and duplicate observations.
+Source-domain labels are provenance hints only; they do not authenticate that a
+filing was opened or independently checked. Conflicting observations are never
+selected automatically.
+
+Run the focused regression suite from the repository root:
+
+```bash
+python -m pip install "pandas>=2.2"
+python -m unittest discover -s tests -p "test_*.py" -v
+```
+
+A GitHub Actions workflow runs the same tests for pushes and pull requests to
+`v2-review-upgrade`. The suite covers the TCS pilot CSV, source-domain boundaries,
+date and numeric validation, duplicate-safe growth and source comparisons.
+
+**TCS pilot review caveat:** the CSV intentionally contains both Ind AS filing
+metrics and IFRS release metrics. Keep these accounting presentations distinct.
+The Q1 FY27 comparative rows must be checked against the original Q1 filing and
+the exact IFRS/Ind AS statement before they are used for any cross-quarter
+comparison. A matching quarter-end date alone is not sufficient to establish
+comparability. No fundamental score is calculated.
