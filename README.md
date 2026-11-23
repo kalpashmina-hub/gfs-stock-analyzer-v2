@@ -132,7 +132,9 @@ date and numeric validation, duplicate-safe growth and source comparisons.
 
 **TCS pilot review caveat:** the CSV intentionally contains both Ind AS filing
 metrics and IFRS release metrics. Keep these accounting presentations distinct.
-The Q1 FY27 comparative rows must be checked against the original Q1 filing and
-the exact IFRS/Ind AS statement before they are used for any cross-quarter
-comparison. A matching quarter-end date alone is not sufficient to establish
-comparability. No fundamental score is calculated.
+The Q1 FY27 revenue, PBT and profit rows now point to the July 9, 2026 Q1 filing;
+the profit values were corrected from 13,920 / 13,849 to 13,420 / 13,349 crore
+after cross-checking the Q1 reported figures. Regression tests assert these
+corrected values and the Q1 filing URL. Continue to compare only identical
+accounting standards, metric definitions, periods and units. No fundamental
+score is calculated.
