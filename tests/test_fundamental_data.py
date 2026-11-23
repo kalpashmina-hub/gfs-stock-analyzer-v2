@@ -36,6 +36,10 @@ class FundamentalIntakeTests(unittest.TestCase):
         self.assertEqual(set(result.data["basis"]), {"consolidated"})
         q1 = result.data[result.data["period_end"] == pd.Timestamp("2026-06-30")]
         profit = q1.set_index("metric")["value"]
+        self.assertEqual(float(profit["profit_before_exceptional_items_and_tax"]), 18612.0)
+        self.assertEqual(float(profit["profit_before_tax"]), 17944.0)
+        self.assertEqual(float(profit["exceptional_items"]), -668.0)
+        self.assertEqual(float(profit["tax_expense"]), 4524.0)
         self.assertEqual(float(profit["profit_after_tax_before_non_controlling_interests"]), 13420.0)
         self.assertEqual(float(profit["net_profit_attributable_to_owners"]), 13349.0)
         self.assertEqual(float(profit["eps_basic_diluted"]), 36.90)
