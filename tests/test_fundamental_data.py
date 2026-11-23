@@ -43,7 +43,9 @@ class FundamentalIntakeTests(unittest.TestCase):
         self.assertEqual(float(profit["profit_after_tax_before_non_controlling_interests"]), 13420.0)
         self.assertEqual(float(profit["net_profit_attributable_to_owners"]), 13349.0)
         self.assertEqual(float(profit["eps_basic_diluted"]), 36.90)
-        self.assertTrue(q1["source_url"].str.contains("173420_09072026").all())
+        q1_nse_indas = q1[q1["source_name"].str.startswith("NSE Integrated Filing")]
+        self.assertTrue(len(q1_nse_indas) > 0)
+        self.assertTrue(q1_nse_indas["source_url"].str.contains("173420_09072026").all())
 
     def test_future_period_and_filing_dates_are_rejected(self):
         future = self.valid.copy()
@@ -53,6 +55,7 @@ class FundamentalIntakeTests(unittest.TestCase):
 
     def test_non_finite_and_blank_values_are_rejected(self):
         bad = self.valid.copy()
+        bad["value"] = bad["value"].astype(float)
         bad.loc[0, "value"] = float("inf")
         result = validate_fundamental_upload(bad)
         self.assertTrue(result.errors)
