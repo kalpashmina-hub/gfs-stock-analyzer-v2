@@ -207,9 +207,9 @@ def source_reconciliation_coverage(data: pd.DataFrame) -> tuple[pd.DataFrame, pd
             if "source_class" in group.columns else False
         )
         if len(publishers) >= 2 and secondary_present:
-            status = "Cross-publisher check — includes secondary source; verify original filing"
+            status = "Comparable publishers — includes secondary source; verify original filing"
         elif len(publishers) >= 2:
-            status = "Distinct publishers — review values and provenance"
+            status = "Comparable publishers — review values and provenance"
         elif count > 1:
             status = "Multiple records, same publisher — not independent"
         else:
