@@ -256,7 +256,10 @@ if run:
                     if kind=="percent": value=f"{value*100:.2f}%"
                     elif kind=="number": value=f"{value:,.2f}" if isinstance(value,(int,float)) else str(value)
                     fund_rows.append({"Metric":label,"Provider value":value})
-            st.dataframe(pd.DataFrame(fund_rows), use_container_width=True, hide_index=True) if fund_rows else st.info("No fundamental fields returned by the provider.")
+            if fund_rows:
+                st.dataframe(pd.DataFrame(fund_rows), use_container_width=True, hide_index=True)
+            else:
+                st.info("No fundamental fields returned by the provider.")
         else:
             st.info("Fundamentals are not included for CSV uploads. Use company annual reports, quarterly results and exchange filings for verification.")
         st.caption("Fundamental data is provider-reported, may be missing or stale, and is not a substitute for reading audited statements, quarterly results, shareholding and exchange announcements.")
