@@ -144,18 +144,51 @@ No fundamental score is calculated.
 
 ## Non-destructive market-data quality audit (review branch)
 
-The optional `market_data_quality.py` module audits daily OHLCV files without changing, deleting, repairing, or adjusting any observations. It reports invalid OHLC, missing/non-finite values, duplicate dates, out-of-order dates, negative/zero volume, flat zero-volume bars, unusually large close-to-close moves, and long calendar gaps. Calendar gaps are informational only: they are not declared missing sessions without an authoritative exchange calendar.
+The optional `market_data_quality.py` module audits daily OHLCV files independently of the GFS indicator and scoring engine. It never repairs, deletes, adjusts, or silently selects among source observations. Every row-level finding includes the original input row number so a reviewer can trace it back to the uploaded/exported file.
 
-The separate `audit_actions()` helper summarizes dividend and split events only when an event DataFrame is supplied. If event data is absent, the report says so explicitly; it does not infer that no corporate actions occurred. This module is not wired into the GFS scoring or indicator engine.
+Checks include:
+- Invalid/missing dates, duplicate dates, and out-of-order observations.
+- Missing, non-numeric, infinite, non-positive or structurally impossible OHLC values.
+- Missing/non-numeric volume, negative volume, zero-volume observations and flat zero-volume bars.
+- Large close-to-close movements (review flags, not automatic rejection).
+- Long calendar gaps (informational only; not automatically called missing exchange sessions).
+- Observations that fall on dates supplied as exchange non-trading days.
+- Missing sessions only when the caller supplies an explicit calendar containing an `IsTradingSession` boolean for each date.
+- Corporate-action event availability/counts and price-adjustment provenance metadata.
+
+### Exchange-calendar boundary
+
+The module does not download, maintain, or claim to authenticate an official NSE/BSE calendar. Supply an authoritative calendar from the exchange or a trusted licensed source. A simple iterable of dates identifies non-trading dates; a DataFrame with `Date` and `IsTradingSession` can additionally identify expected trading sessions. This distinction prevents weekends/holidays from being mistaken for missing market data and avoids treating an unverified holiday list as an authoritative session schedule.
+
+### Corporate actions and adjusted prices
+
+`audit_actions()` counts only dividend/split events actually supplied by the caller. Missing event data is explicitly reported as unavailable, not as proof that no corporate actions occurred. `audit_price_adjustment_metadata()` records provider, interval, adjustment flags and related provenance when supplied; it cannot independently prove that a provider applied those settings correctly. Yahoo Finance/yfinance `auto_adjust=True` adjusts OHLC prices, while `actions=False` omits dividend/split event columns. The optional yfinance `repair` setting is a provider-side repair attempt, not exchange verification. See the [yfinance history reference](https://ranaroussi.github.io/yfinance/reference/yfinance.price_history.html).
 
 Example:
 
 ```python
 import pandas as pd
-from market_data_quality import audit_ohlcv
+from market_data_quality import audit_ohlcv, audit_actions, audit_price_adjustment_metadata
 
-report = audit_ohlcv(pd.read_csv("daily_ohlcv.csv"))
+prices = pd.read_csv("daily_ohlcv.csv")
+report = audit_ohlcv(prices, exchange="NSE")
 print(report["findings"].to_string(index=False))
+
+# Pass an authoritative calendar when available:
+# calendar columns: Date, IsTradingSession, Reason
+# report = audit_ohlcv(prices, exchange_calendar=calendar, exchange="NSE")
+
+actions_report = audit_actions(None)  # explicitly reports unavailable
+provenance = audit_price_adjustment_metadata({
+    "provider": "Yahoo Finance", "interval": "1d",
+    "auto_adjust": True, "actions": False, "exchange": "NSE",
+})
 ```
 
-Yahoo Finance/yfinance adjustment settings must be recorded alongside downloaded data. In particular, `auto_adjust=True` adjusts OHLC prices, while `actions=False` omits dividend/split event columns. The optional yfinance `repair` setting is a provider-side repair attempt, not an exchange verification. See the [yfinance history reference](https://ranaroussi.github.io/yfinance/reference/yfinance.price_history.html). Do not switch adjustment or repair settings in the live scoring path without a separate comparison and approval.
+Run the full regression suite from the repository root:
+
+```bash
+python -m unittest discover -s tests -p "test_*.py" -v
+```
+
+This is a review-branch utility only. It is not integrated into the live app and does not alter any indicator formula, GFS score, Fibonacci calculation, or source data. Do not switch adjustment or repair settings in the live scoring path without a separate comparison and approval.
