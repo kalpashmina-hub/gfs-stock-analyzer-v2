@@ -140,3 +140,22 @@ exceptional item of ₹668 crore is separately recorded, so reported PBT is
 and reconciled values are asserted by regression tests. Continue to compare
 only identical accounting standards, metric definitions, periods and units.
 No fundamental score is calculated.
+
+
+## Non-destructive market-data quality audit (review branch)
+
+The optional `market_data_quality.py` module audits daily OHLCV files without changing, deleting, repairing, or adjusting any observations. It reports invalid OHLC, missing/non-finite values, duplicate dates, out-of-order dates, negative/zero volume, flat zero-volume bars, unusually large close-to-close moves, and long calendar gaps. Calendar gaps are informational only: they are not declared missing sessions without an authoritative exchange calendar.
+
+The separate `audit_actions()` helper summarizes dividend and split events only when an event DataFrame is supplied. If event data is absent, the report says so explicitly; it does not infer that no corporate actions occurred. This module is not wired into the GFS scoring or indicator engine.
+
+Example:
+
+```python
+import pandas as pd
+from market_data_quality import audit_ohlcv
+
+report = audit_ohlcv(pd.read_csv("daily_ohlcv.csv"))
+print(report["findings"].to_string(index=False))
+```
+
+Yahoo Finance/yfinance adjustment settings must be recorded alongside downloaded data. In particular, `auto_adjust=True` adjusts OHLC prices, while `actions=False` omits dividend/split event columns. The optional yfinance `repair` setting is a provider-side repair attempt, not an exchange verification. See the [yfinance history reference](https://ranaroussi.github.io/yfinance/reference/yfinance.price_history.html). Do not switch adjustment or repair settings in the live scoring path without a separate comparison and approval.
