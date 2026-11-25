@@ -625,6 +625,9 @@ with st.sidebar:
     st.header("Analysis settings")
     symbol = st.text_input("NSE symbol", "STLTECH").strip().upper()
     source = st.radio("EOD data source", ["Yahoo Finance (free; unofficial)", "Upload OHLCV CSV"], index=0)
+    if source.startswith("Yahoo") and not symbol:
+        st.error("Enter a valid NSE/BSE ticker symbol before running the analysis.")
+        st.stop()
     period = st.selectbox("History", ["5y", "10y", "max"], index=1)
     uploaded = st.file_uploader("Upload daily OHLCV CSV", type=["csv"]) if source.startswith("Upload") else None
     st.caption("CSV needs Date, Open, High, Low, Close, Volume columns. Daily bars work best.")
@@ -646,8 +649,8 @@ if st.session_state.get("analysis_requested", False):
             if source.startswith("Yahoo"):
                 yf_symbol = symbol if "." in symbol else symbol + ".NS"
                 raw, info = fetch_yahoo(yf_symbol, period)
-                if raw.empty and not symbol.endswith(".BO"):
-                    st.warning("NSE symbol returned no data. You can try the BSE suffix .BO or upload a CSV.")
+                if raw.empty:
+                    st.warning(f"No daily history was returned for {yf_symbol}. Check the exchange suffix or ticker spelling, or upload a verified OHLCV CSV.")
                     st.stop()
                 market_audit = audit_ohlcv(raw.reset_index(), exchange="NSE" if yf_symbol.endswith(".NS") else "BSE")
                 action_audit = audit_actions(raw)
