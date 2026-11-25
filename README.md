@@ -9,6 +9,9 @@ A Streamlit application implementing the user's Grandfather–Father–Son frame
 ## Included in V2
 
 - EOD history via Yahoo Finance (`yfinance`) or user-uploaded OHLCV CSV.
+- Non-destructive OHLCV quality checks before cleaning/scoring, including duplicate dates, malformed candles, zero-volume bars, large moves and calendar gaps; structural errors stop analysis, while review flags remain visible.
+- Corporate-action event availability and price-adjustment provenance reporting; adjusted prices remain unchanged in the existing GFS calculation path.
+- Dynamic Yahoo Finance quarterly/annual income statement, balance-sheet and cash-flow tables for the selected ticker, when the provider supplies them.
 - Independent calculation of EMA 10/20/50, SMA 50/200, RSI 14, RSI 9-period average, MACD histogram and 20-session volume average.
 - Bollinger Bands (20,2), %B, bandwidth and a trailing low-volatility squeeze diagnostic, displayed separately for entry/volatility context and excluded from GFS scoring.
 - Weighted GFS checklist score out of 100 and a transparent state classification for each timeframe.
@@ -63,7 +66,8 @@ The labels (Strong Buy Candidate, Buy on Confirmation, Watchlist, Avoid Fresh En
 
 ## Known limitations in V2
 
-- Yahoo fundamentals can be missing, stale or defined differently by the provider. The most-recent-quarter field is only a reference date; individual fields may use different periods. Verify debt/equity, growth, cash and debt against company filings.
+- Yahoo fundamentals and statement tables can be missing, stale, incomplete or defined differently by the provider. Statement line items retain provider labels and reporting columns but are not independently verified exchange filings. Verify periods, units, debt/equity, growth, cash and debt against company filings.
+- Market-data quality checks are diagnostic, not exchange authentication. Calendar gaps are not classified as missing sessions without an authoritative session calendar; unusual moves require news/corporate-action review. Yahoo's adjustment policy is recorded as requested, not independently proven.
 - EOD data freshness is checked using calendar-day age; holidays and provider delays can still require manual judgment.
 - Support/resistance pivots and Fibonacci levels are mechanical estimates; validate swing anchors visually.
 - No live feed, broker integration, automated alerts, backtesting or trade execution.
