@@ -1,0 +1,157 @@
+"""Regression tests for the source-aware fundamental filing intake."""
+import unittest
+from pathlib import Path
+
+import pandas as pd
+
+from fundamental_data import (
+    classify_source,
+    compare_sources,
+    period_growth_table,
+    source_reconciliation_coverage,
+    fundamental_quality_tables,
+    validate_fundamental_upload,
+)
+
+CSV_PATH = Path(__file__).resolve().parents[1] / "data" / "tcs_q2_fy27_fundamentals.csv"
+
+
+class FundamentalIntakeTests(unittest.TestCase):
+    def setUp(self):
+        self.valid = pd.DataFrame([{
+            "metric": "revenue_from_operations",
+            "value": 100,
+            "period_end": "30-09-2026",
+            "basis": "consolidated",
+            "unit": "INR crore (IndAS; quarter)",
+            "source_name": "NSE filing",
+            "source_url": "https://nsearchives.nseindia.com/filing.html",
+            "filing_date": "08-10-2026",
+        }])
+
+    def test_tcs_pilot_validates_and_keeps_provenance(self):
+        raw = pd.read_csv(CSV_PATH)
+        result = validate_fundamental_upload(raw)
+        self.assertEqual(result.errors, [])
+        self.assertEqual(len(result.data), len(raw))
+        self.assertFalse(result.data["source_class"].eq("Unclassified").any())
+        self.assertEqual(set(result.data["basis"]), {"consolidated"})
+        self.assertIn("Primary — NSE exchange domain", set(result.data["source_class"]))
+        self.assertIn("Primary — company disclosure domain", set(result.data["source_class"]))
+        q2 = result.data[(result.data["period_end"] == pd.Timestamp("2026-09-30")) & result.data["source_class"].str.startswith("Primary")]
+        q2_values = q2.set_index("metric")["value"]
+        self.assertEqual(float(q2_values["revenue_from_operations"]), 73188.0)
+        self.assertEqual(float(q2_values["profit_before_tax"]), 18638.0)
+        self.assertEqual(float(q2_values["profit_after_tax_before_non_controlling_interests"]), 13934.0)
+        self.assertEqual(float(q2_values["net_profit_attributable_to_owners"]), 13884.0)
+        self.assertEqual(float(q2_values["eps_basic_diluted"]), 38.37)
+        secondary_q2 = result.data[result.data["source_class"].eq("Secondary — cross-check only")]
+        self.assertEqual(len(secondary_q2), 3)
+        self.assertTrue(secondary_q2["source_name"].str.contains("Trendlyne secondary cross-check").all())
+        coverage, review = source_reconciliation_coverage(result.data)
+        self.assertEqual(int(coverage.iloc[0]["Comparable metric-period groups"]), 3)
+        self.assertEqual(len(review), 3)
+        comparisons = compare_sources(result.data)
+        self.assertEqual(len(comparisons), 3)
+        self.assertTrue((comparisons["Difference (%)"] == 0).all())
+        growth = period_growth_table(result.data)
+        self.assertTrue(((growth["Metric"] == "revenue_from_operations") & (growth["Comparison"] == "YoY")).any())
+        operating, balance, gaps = fundamental_quality_tables(result.data)
+        self.assertTrue((operating["Metric"] == "Operating Margin").any())
+        self.assertTrue((operating["Metric"] == "Operating Cash Flow To Net Profit").any())
+        self.assertTrue((balance["Metric"] == "Cash and investments / total assets").any())
+        self.assertTrue((gaps["Metric not available"] == "Interest-bearing borrowings and lease liabilities").any())
+        q1 = result.data[result.data["period_end"] == pd.Timestamp("2026-06-30")]
+        profit = q1.set_index("metric")["value"]
+        self.assertEqual(float(profit["profit_before_exceptional_items_and_tax"]), 18612.0)
+        self.assertEqual(float(profit["profit_before_tax"]), 17944.0)
+        self.assertEqual(float(profit["exceptional_items"]), -668.0)
+        self.assertEqual(float(profit["tax_expense"]), 4524.0)
+        self.assertEqual(float(profit["profit_after_tax_before_non_controlling_interests"]), 13420.0)
+        self.assertEqual(float(profit["net_profit_attributable_to_owners"]), 13349.0)
+        self.assertEqual(float(profit["eps_basic_diluted"]), 36.90)
+        q1_nse_indas = q1[q1["source_name"].str.startswith("NSE Integrated Filing")]
+        self.assertTrue(len(q1_nse_indas) > 0)
+        self.assertTrue(q1_nse_indas["source_url"].str.contains("173420_09072026").all())
+
+        q3 = result.data[result.data["period_end"] == pd.Timestamp("2025-12-31")]
+        q3_primary = q3[q3["source_class"].str.startswith("Primary")]
+        q3_values = q3_primary.set_index("metric")["value"]
+        self.assertEqual(float(q3_values["revenue_from_operations"]), 67087.0)
+        self.assertEqual(float(q3_values["profit_before_tax"]), 17811.0)
+        self.assertIn("excludes exceptional items", str(q3_primary.loc[q3_primary["metric"] == "profit_before_tax", "unit"].iloc[0]))
+        q4 = result.data[result.data["period_end"] == pd.Timestamp("2026-03-31")]
+        q4_values = q4.set_index("metric")["value"]
+        self.assertEqual(float(q4_values["revenue_from_operations"]), 70698.0)
+        self.assertEqual(float(q4_values["profit_before_tax"]), 18362.0)
+        self.assertEqual(float(q4_values["eps_basic_diluted"]), 37.92)
+        self.assertEqual(float(q4_values["operating_margin"]), 25.3)
+
+
+    def test_future_period_and_filing_dates_are_rejected(self):
+        future = self.valid.copy()
+        future.loc[0, "period_end"] = "30-12-2026"
+        result = validate_fundamental_upload(future)
+        self.assertTrue(any("period_end is in the future" in error for error in result.errors))
+
+    def test_non_finite_and_blank_values_are_rejected(self):
+        bad = self.valid.copy()
+        bad["value"] = bad["value"].astype(float)
+        bad.loc[0, "value"] = float("inf")
+        result = validate_fundamental_upload(bad)
+        self.assertTrue(result.errors)
+
+    def test_lookalike_domain_is_not_primary(self):
+        self.assertEqual(
+            classify_source("NSE filing", "https://nseindia.com.attacker.example/file"),
+            "Unclassified — verify source",
+        )
+
+    def test_secondary_domain_is_flagged(self):
+        self.assertEqual(
+            classify_source("Research site", "https://www.screener.in/company/TCS/"),
+            "Secondary — cross-check only",
+        )
+
+    def test_growth_omits_duplicate_observation_groups(self):
+        data = pd.DataFrame([
+            {"metric": "revenue_from_operations", "value": 100, "period_end": pd.Timestamp("2025-09-30"), "basis": "consolidated", "unit": "INR crore"},
+            {"metric": "revenue_from_operations", "value": 120, "period_end": pd.Timestamp("2026-09-30"), "basis": "consolidated", "unit": "INR crore"},
+            {"metric": "revenue_from_operations", "value": 120, "period_end": pd.Timestamp("2026-09-30"), "basis": "consolidated", "unit": "INR crore"},
+        ])
+        self.assertTrue(period_growth_table(data).empty)
+
+    def test_reconciliation_requires_distinct_publishers(self):
+        data = pd.DataFrame([
+            {"metric": "revenue", "value": 100, "period_end": pd.Timestamp("2026-09-30"), "basis": "consolidated", "unit": "INR crore", "source_url": "https://www.nseindia.com/a"},
+            {"metric": "revenue", "value": 100, "period_end": pd.Timestamp("2026-09-30"), "basis": "consolidated", "unit": "INR crore", "source_url": "https://nsearchives.nseindia.com/b"},
+            {"metric": "profit", "value": 50, "period_end": pd.Timestamp("2026-09-30"), "basis": "consolidated", "unit": "INR crore", "source_url": "https://tcs.com/a"},
+        ])
+        summary, review = source_reconciliation_coverage(data)
+        self.assertEqual(int(summary.iloc[0]["Comparable metric-period groups"]), 0)
+        self.assertEqual(int(summary.iloc[0]["Same-publisher duplicate groups"]), 1)
+        self.assertTrue(review.empty)
+
+    def test_reconciliation_detects_distinct_publishers_only_for_exact_unit(self):
+        data = pd.DataFrame([
+            {"metric": "revenue", "value": 100, "period_end": pd.Timestamp("2026-09-30"), "basis": "consolidated", "unit": "INR crore", "source_url": "https://nseindia.com/a"},
+            {"metric": "revenue", "value": 101, "period_end": pd.Timestamp("2026-09-30"), "basis": "consolidated", "unit": "INR crore", "source_url": "https://tcs.com/a"},
+            {"metric": "revenue", "value": 7, "period_end": pd.Timestamp("2026-09-30"), "basis": "consolidated", "unit": "USD million", "source_url": "https://example.org/a"},
+        ])
+        summary, review = source_reconciliation_coverage(data)
+        self.assertEqual(int(summary.iloc[0]["Comparable metric-period groups"]), 1)
+        self.assertEqual(len(review), 1)
+        self.assertEqual(int(review.iloc[0]["Publisher count"]), 2)
+
+    def test_source_comparison_reports_spread(self):
+        data = pd.DataFrame([
+            {"metric": "revenue", "value": 100, "period_end": pd.Timestamp("2026-09-30"), "basis": "consolidated", "unit": "INR crore", "source_name": "NSE", "source_url": "https://nseindia.com/a"},
+            {"metric": "revenue", "value": 101, "period_end": pd.Timestamp("2026-09-30"), "basis": "consolidated", "unit": "INR crore", "source_name": "Company", "source_url": "https://tcs.com/a"},
+        ])
+        comparison = compare_sources(data)
+        self.assertEqual(len(comparison), 1)
+        self.assertEqual(comparison.iloc[0]["Review required"], "Yes")
+
+
+if __name__ == "__main__":
+    unittest.main()
