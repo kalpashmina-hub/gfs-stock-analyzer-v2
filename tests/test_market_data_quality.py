@@ -41,6 +41,30 @@ class MarketDataQualityTests(unittest.TestCase):
         self.assertIn("INVALID_OHLC", codes)
         self.assertIn("NEGATIVE_VOLUME", codes)
 
+    def test_missing_volume_is_warning_not_blocking_error(self):
+        data = sample()
+        data.loc[1, "Volume"] = float("nan")
+        findings = audit_ohlcv(data)["findings"]
+        row = findings[findings["Date"] == pd.Timestamp("2026-01-02")]
+        self.assertIn("MISSING_VOLUME", set(row["Code"]))
+        self.assertFalse((row["Severity"] == "error").any())
+        self.assertNotIn("NON_FINITE_VALUE", set(row["Code"]))
+
+    def test_missing_price_is_blocking_without_duplicate_non_finite_flag(self):
+        data = sample()
+        data.loc[1, "Close"] = float("nan")
+        findings = audit_ohlcv(data)["findings"]
+        row = findings[findings["Date"] == pd.Timestamp("2026-01-02")]
+        self.assertIn("MISSING_OR_NON_NUMERIC", set(row["Code"]))
+        self.assertNotIn("NON_FINITE_VALUE", set(row["Code"]))
+
+    def test_infinite_value_is_non_finite_error(self):
+        data = sample()
+        data.loc[1, "Volume"] = float("inf")
+        findings = audit_ohlcv(data)["findings"]
+        row = findings[findings["Date"] == pd.Timestamp("2026-01-02")]
+        self.assertIn("NON_FINITE_VALUE", set(row["Code"]))
+
     def test_zero_volume_flat_bar(self):
         data = sample(["2026-01-01", "2026-01-02"])
         data.loc[0, ["Open", "High", "Low", "Close", "Volume"]] = [100, 100, 100, 100, 0]
