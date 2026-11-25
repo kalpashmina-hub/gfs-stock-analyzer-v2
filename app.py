@@ -9,6 +9,7 @@ import yfinance as yf
 import plotly.graph_objects as go
 from fundamental_data import validate_fundamental_upload, compare_sources, latest_filing_status, source_reconciliation_coverage, fundamental_quality_tables, period_growth_table as filing_period_growth_table
 from market_data_quality import audit_ohlcv, audit_actions, audit_price_adjustment_metadata
+from provider_fundamentals import statement_frames_to_long
 from plotly.subplots import make_subplots
 
 st.set_page_config(page_title="GFS Stock Analyzer V2", page_icon="📈", layout="wide")
@@ -1135,6 +1136,18 @@ if st.session_state.get("analysis_requested", False):
             if fund_rows:
                 fund_table = pd.DataFrame(fund_rows).fillna("")
                 st.dataframe(fund_table, use_container_width=True, hide_index=True)
+                if source.startswith("Yahoo"):
+                    snapshot_export = fund_table.copy()
+                    snapshot_export.insert(0, "Ticker", yf_symbol)
+                    snapshot_export.insert(1, "Provider", "Yahoo Finance / yfinance")
+                    snapshot_export.insert(2, "Quote currency", quote_currency or "Not supplied")
+                    snapshot_export.insert(3, "Financial currency", financial_currency or "Not supplied")
+                    st.download_button(
+                        "Download selected-stock fundamental snapshot CSV",
+                        snapshot_export.to_csv(index=False).encode("utf-8-sig"),
+                        file_name=f"{yf_symbol.replace('.', '_')}_fundamental_snapshot_provider.csv",
+                        mime="text/csv",
+                    )
                 st.caption(f"Currency metadata — quote: {quote_currency or 'not supplied'}; financial statements: {financial_currency or 'not supplied'}. The provider's most recent quarter is a reference date, not a guarantee that every field uses that period. Growth periods/bases are not exposed consistently; verify filings, especially unusually large growth. Debt and cash are separate provider-reported balances; do not subtract them to infer net cash without reconciling dates, definitions, restricted cash, leases and investments.")
             else:
                 st.info("No fundamental fields returned by the provider.")
@@ -1146,6 +1159,19 @@ if st.session_state.get("analysis_requested", False):
             st.markdown("**Provider financial statements — selected stock**")
             st.caption("These statement tables are fetched dynamically for the selected ticker. They retain the provider's original line-item labels, dates and units; they are not independently verified exchange filings. Missing tables are reported as unavailable, not treated as zero.")
             statement_tables = fetch_yahoo_fundamentals(yf_symbol)
+            statement_export = statement_frames_to_long(
+                statement_tables, ticker=yf_symbol, currency=info.get("financialCurrency") or info.get("currency")
+            )
+            if not statement_export.empty:
+                st.download_button(
+                    "Download selected-stock financial statements CSV",
+                    statement_export.to_csv(index=False).encode("utf-8-sig"),
+                    file_name=f"{yf_symbol.replace('.', '_')}_financial_statements_provider.csv",
+                    mime="text/csv",
+                    help="Raw provider line items and periods; units and accounting basis are not inferred.",
+                )
+            else:
+                st.info("No provider financial-statement rows are available to export for this ticker.")
             available_statement_count = 0
             for statement_name, statement_data in statement_tables.items():
                 if not statement_data.empty:
@@ -1167,14 +1193,15 @@ if st.session_state.get("analysis_requested", False):
         st.download_button("Download filing CSV template", template.to_csv(index=False).encode("utf-8"),
                            file_name="GFS_fundamental_filing_template.csv", mime="text/csv")
         prepared_tcs_path = "data/tcs_q2_fy27_fundamentals.csv"
-        try:
-            with open(prepared_tcs_path, "rb") as prepared_file:
-                st.download_button("Download prepared TCS Q2 FY27 filing data (beta)",
-                                   prepared_file.read(),
-                                   file_name="TCS_Q2_FY27_filing_data_beta.csv",
-                                   mime="text/csv")
-        except FileNotFoundError:
-            st.caption("Prepared TCS filing dataset is not available in this app build yet.")
+        if source.startswith("Yahoo") and yf_symbol.upper() in {"TCS.NS", "TCS.BO"}:
+            try:
+                with open(prepared_tcs_path, "rb") as prepared_file:
+                    st.download_button("Download prepared TCS Q2 FY27 filing data (beta)",
+                                       prepared_file.read(),
+                                       file_name="TCS_Q2_FY27_filing_data_beta.csv",
+                                       mime="text/csv")
+            except FileNotFoundError:
+                st.caption("Prepared TCS filing dataset is not available in this app build yet.")
         filing_upload = st.file_uploader("Upload normalized fundamental filing CSV", type=["csv"], key="fundamental_filing_csv")
         if filing_upload is not None:
             try:
