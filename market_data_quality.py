@@ -92,12 +92,20 @@ def audit_ohlcv(
     for idx, row in ordered.iterrows():
         source_row = row["__source_row__"]
         values = row[list(REQUIRED_OHLCV)]
-        if values.isna().any():
+        missing_fields = values.index[values.isna()].tolist()
+        missing_price_fields = [field for field in missing_fields if field in ("Open", "High", "Low", "Close")]
+        if missing_price_fields:
             add(idx, source_row, "MISSING_OR_NON_NUMERIC", "error",
-                "One or more OHLCV fields are missing or non-numeric")
-        if not np.isfinite(values.to_numpy(dtype=float)).all():
+                "Missing or non-numeric price field(s): " + ", ".join(missing_price_fields))
+        if "Volume" in missing_fields:
+            # Missing volume is permitted by clean_ohlcv and does not invalidate
+            # price-based indicators. Volume-dependent confirmation remains unavailable.
+            add(idx, source_row, "MISSING_VOLUME", "warning",
+                "Volume is missing or non-numeric; price analysis may continue, but volume confirmation is unavailable")
+        numeric_values = values.dropna().to_numpy(dtype=float)
+        if np.isinf(numeric_values).any():
             add(idx, source_row, "NON_FINITE_VALUE", "error",
-                "One or more OHLCV fields are infinite")
+                "One or more OHLCV fields contain positive or negative infinity")
         prices = row[["Open", "High", "Low", "Close"]]
         if prices.notna().all():
             invalid = bool((prices <= 0).any() or row["High"] < prices.max() or
