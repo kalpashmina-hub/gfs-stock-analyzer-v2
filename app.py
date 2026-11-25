@@ -8,6 +8,7 @@ import streamlit as st
 import yfinance as yf
 import plotly.graph_objects as go
 from fundamental_data import validate_fundamental_upload, compare_sources, latest_filing_status, source_reconciliation_coverage, fundamental_quality_tables, period_growth_table as filing_period_growth_table
+from market_data_quality import audit_ohlcv, audit_actions, audit_price_adjustment_metadata
 from plotly.subplots import make_subplots
 
 st.set_page_config(page_title="GFS Stock Analyzer V2", page_icon="📈", layout="wide")
@@ -25,12 +26,36 @@ REQUIRED = ["Open", "High", "Low", "Close", "Volume"]
 @st.cache_data(ttl=1800, show_spinner=False)
 def fetch_yahoo(symbol: str, period: str):
     ticker = yf.Ticker(symbol)
-    hist = ticker.history(period=period, interval="1d", auto_adjust=True, actions=False)
+    # Keep adjusted OHLC for continuity with the existing indicator framework,
+    # but request action columns separately so their presence can be audited.
+    hist = ticker.history(period=period, interval="1d", auto_adjust=True, actions=True)
     try:
         info = ticker.get_info()
     except Exception:
         info = {}
     return hist, info
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def fetch_yahoo_fundamentals(symbol: str) -> dict[str, pd.DataFrame]:
+    """Fetch provider statement tables for any supported ticker; preserve raw labels/units."""
+    ticker = yf.Ticker(symbol)
+    attributes = {
+        "Quarterly income statement": "quarterly_financials",
+        "Annual income statement": "financials",
+        "Quarterly balance sheet": "quarterly_balance_sheet",
+        "Annual balance sheet": "balance_sheet",
+        "Quarterly cash flow": "quarterly_cashflow",
+        "Annual cash flow": "cashflow",
+    }
+    output = {}
+    for label, attribute in attributes.items():
+        try:
+            value = getattr(ticker, attribute)
+            output[label] = value.copy() if isinstance(value, pd.DataFrame) else pd.DataFrame()
+        except Exception:
+            output[label] = pd.DataFrame()
+    return output
 
 
 def clean_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
@@ -623,13 +648,35 @@ if st.session_state.get("analysis_requested", False):
                 if raw.empty and not symbol.endswith(".BO"):
                     st.warning("NSE symbol returned no data. You can try the BSE suffix .BO or upload a CSV.")
                     st.stop()
+                market_audit = audit_ohlcv(raw.reset_index(), exchange="NSE" if yf_symbol.endswith(".NS") else "BSE")
+                action_audit = audit_actions(raw)
+                adjustment_audit = audit_price_adjustment_metadata({
+                    "provider": "Yahoo Finance / yfinance", "interval": "1d",
+                    "auto_adjust": True, "actions": True, "exchange": "NSE" if yf_symbol.endswith(".NS") else "BSE",
+                    "timezone": "Asia/Kolkata",
+                })
+                if not market_audit["findings"].query("Severity == 'error'").empty:
+                    st.error("Market-data quality errors were found before cleaning. Correct the source data or use a verified CSV; GFS scoring has been stopped.")
+                    st.dataframe(market_audit["findings"], use_container_width=True, hide_index=True)
+                    st.stop()
                 raw = clean_ohlcv(raw)
                 source_label = f"Yahoo Finance / yfinance ({yf_symbol}) — unofficial EOD feed"
             else:
                 if uploaded is None:
                     st.error("Please upload a daily OHLCV CSV first.")
                     st.stop()
-                raw = clean_ohlcv(pd.read_csv(uploaded))
+                raw_input = pd.read_csv(uploaded)
+                market_audit = audit_ohlcv(raw_input, exchange="NSE")
+                action_audit = audit_actions(raw_input)
+                adjustment_audit = audit_price_adjustment_metadata({
+                    "provider": "User-uploaded CSV", "interval": "1d",
+                    "auto_adjust": None, "actions": "not supplied", "exchange": "NSE",
+                })
+                if not market_audit["findings"].query("Severity == 'error'").empty:
+                    st.error("Market-data quality errors were found. Correct the uploaded CSV before running GFS; no rows have been silently selected or removed.")
+                    st.dataframe(market_audit["findings"], use_container_width=True, hide_index=True)
+                    st.stop()
+                raw = clean_ohlcv(raw_input)
                 source_label = f"User-uploaded CSV: {uploaded.name}"
         analysis_raw = completed_daily_ohlcv(raw)
         if len(analysis_raw) < 220:
@@ -646,6 +693,25 @@ if st.session_state.get("analysis_requested", False):
         total = round(sum(x["Weighted points"] for x in results))
         st.subheader(info.get("longName", symbol) + (f" ({yf_symbol})" if source.startswith("Yahoo") else ""))
         st.caption(f"Source: {source_label}  |  Last completed daily bar used for GFS: {s['Date']}  |  {len(analysis_raw):,} completed daily sessions")
+        st.subheader("Market-data quality check")
+        findings = market_audit["findings"]
+        quality_counts = findings["Severity"].value_counts().to_dict() if not findings.empty else {}
+        st.caption(
+            f"Rows checked: {market_audit['rows_input']:,} | "
+            f"Invalid dates: {market_audit['invalid_date_rows']} | "
+            f"Duplicate dates: {market_audit['duplicate_date_rows']} | "
+            f"Warnings: {quality_counts.get('warning', 0)} | "
+            f"Review flags: {quality_counts.get('review', 0)} | "
+            f"Informational gaps: {quality_counts.get('info', 0)}"
+        )
+        if not findings.empty:
+            st.warning("Review the findings below. Large price moves and zero-volume bars are flags for inspection, not automatic proof of bad data.")
+            st.dataframe(findings, use_container_width=True, hide_index=True)
+        else:
+            st.success("No structural OHLCV issues detected by the available checks. This does not independently authenticate the provider feed.")
+        with st.expander("Corporate-action and adjustment provenance", expanded=False):
+            st.write(action_audit)
+            st.write(adjustment_audit)
         if not analysis_raw.empty and pd.Timestamp(raw.index[-1]).normalize() > pd.Timestamp(analysis_raw.index[-1]).normalize():
             st.info(f"Today's developing daily bar ({pd.Timestamp(raw.index[-1]).strftime('%d %b %Y')}) is excluded from confirmed daily indicators, scoring and volume until after 16:15 IST. It remains available for the provisional monthly panel.")
         latest_bar_date = pd.Timestamp(raw.index[-1]).normalize()
@@ -1075,6 +1141,25 @@ if st.session_state.get("analysis_requested", False):
         else:
             st.info("Fundamentals are not included for CSV uploads. Use company annual reports, quarterly results and exchange filings for verification.")
         st.caption("Fundamental data is provider-reported and may be missing or stale. Growth periods and comparison bases are not reliably exposed in this table. Verify against audited statements, quarterly results and exchange announcements.")
+
+        if source.startswith("Yahoo"):
+            st.markdown("**Provider financial statements — selected stock**")
+            st.caption("These statement tables are fetched dynamically for the selected ticker. They retain the provider's original line-item labels, dates and units; they are not independently verified exchange filings. Missing tables are reported as unavailable, not treated as zero.")
+            statement_tables = fetch_yahoo_fundamentals(yf_symbol)
+            available_statement_count = 0
+            for statement_name, statement_data in statement_tables.items():
+                if not statement_data.empty:
+                    available_statement_count += 1
+                    with st.expander(statement_name, expanded=False):
+                        display_statement = statement_data.copy()
+                        display_statement.columns = [
+                            pd.Timestamp(column).strftime("%d %b %Y")
+                            if pd.notna(pd.to_datetime(column, errors="coerce")) else str(column)
+                            for column in display_statement.columns
+                        ]
+                        st.dataframe(display_statement, use_container_width=True)
+            if available_statement_count == 0:
+                st.info("The provider did not return financial statement tables for this ticker. Use the official filing intake below.")
 
         st.markdown("**Official filing intake and free-source reconciliation (beta)**")
         st.caption("Upload a normalized CSV prepared from NSE/BSE filings or the company's investor-relations results. Each metric must retain its own period, consolidated/standalone basis, units, filing date and source link. This intake validates provenance and compares sources; it does not yet calculate a fundamental score or automatically scrape exchange websites.")
